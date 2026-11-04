@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="模玩预定簿：记录预定、定金、补款、发售日和到货状态。">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="模玩预定簿">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <title>模玩预定簿</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="模玩预定簿首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 56 56" role="img">
+            <rect width="56" height="56" rx="17" fill="#0f172a"/>
+            <rect x="12" y="14" width="32" height="30" rx="7" fill="#fff7e6"/>
+            <path d="M12 23h32" stroke="#f59e0b" stroke-width="4"/>
+            <path d="M20 11v8M36 11v8" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+            <path d="M19 32h7v7h-7zM31 32h7v7h-7z" fill="#0f172a"/>
+          </svg>
+        </span>
+        <span class="brand-copy">
+          <strong>模玩预定簿</strong>
+          <small>预定制收藏的轻量记录</small>
+        </span>
+      </a>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost btn-icon" id="settingsButton" type="button" aria-label="打开设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06L3.7 16.94l.06-.06A1.7 1.7 0 0 0 4.1 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H2.3V9.6h.09A1.7 1.7 0 0 0 4.1 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06L6.56 3.7l.06.06A1.7 1.7 0 0 0 8.5 4.1a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V2.3h4v.09A1.7 1.7 0 0 0 15 4.1a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8.5c.12.4.34.75.65 1 .3.26.68.4 1.08.4h.09v4h-.09a1.7 1.7 0 0 0-1.73 1.1Z"/></svg>
+        </button>
+        <button class="btn btn-primary top-add" id="addButton" type="button"><span aria-hidden="true">＋</span> 新增预定</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="hero" aria-labelledby="heroTitle">
+        <div class="hero-copy">
+          <span class="eyebrow" id="greeting">今天要留意什么？</span>
+          <h1 id="heroTitle">把预定期待办，收进一个地方。</h1>
+          <p id="heroSub">记录全款、定金和补款；临近补款与发售时，一眼就能看到。</p>
+          <div class="hero-meta"><span class="hero-dot"></span><span>数据自动保存在当前浏览器</span></div>
+        </div>
+        <div class="next-card" id="nextCard">
+          <div class="next-card-top"><span class="pill pill-amber">下一件事</span><span class="next-countdown" id="nextCountdown">—</span></div>
+          <strong id="nextName">还没有需要关注的日期</strong>
+          <span id="nextDetail">添加第一笔预定后，这里会自动提示最近的补款或发售。</span>
+          <button class="btn btn-dark btn-small" id="nextAction" type="button">查看记录</button>
+        </div>
+      </section>
+
+      <section class="stats-grid" aria-label="预定统计">
+        <article class="stat-card"><span class="stat-label">进行中预定</span><strong class="stat-value" id="statActive">0</strong><span class="stat-hint">未到货、未取消</span></article>
+        <article class="stat-card stat-amber"><span class="stat-label">剩余待付</span><strong class="stat-value" id="statDue">¥0</strong><span class="stat-hint">定金与已补款之外</span></article>
+        <article class="stat-card stat-blue"><span class="stat-label">30天内发售</span><strong class="stat-value" id="statUpcoming">0</strong><span class="stat-hint">按发售/出货日计算</span></article>
+        <article class="stat-card stat-green"><span class="stat-label">已到货</span><strong class="stat-value" id="statArrived">0</strong><span class="stat-hint">可以安心拆盒了</span></article>
+      </section>
+
+      <section class="toolbar" aria-label="筛选与排序">
+        <div class="filter-tabs" role="tablist" aria-label="记录筛选">
+          <button class="filter-tab active" type="button" data-filter="all" role="tab" aria-selected="true">全部</button>
+          <button class="filter-tab" type="button" data-filter="due" role="tab" aria-selected="false">待补款</button>
+          <button class="filter-tab" type="button" data-filter="upcoming" role="tab" aria-selected="false">即将发售</button>
+          <button class="filter-tab" type="button" data-filter="done" role="tab" aria-selected="false">已完成</button>
+        </div>
+        <div class="toolbar-controls">
+          <label class="search-box">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.2 4.2"/></svg>
+            <input id="searchInput" type="search" placeholder="搜商品 / 店铺 / 订单号" autocomplete="off">
+          </label>
+          <label class="select-wrap">
+            <span class="sr-only">排序方式</span>
+            <select id="sortSelect">
+              <option value="smart">智能排序</option>
+              <option value="release">按发售日</option>
+              <option value="deadline">按补款截止</option>
+              <option value="created">按预定时间</option>
+              <option value="amount">按待付金额</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <div class="list-heading">
+        <div><strong id="listTitle">全部记录</strong><span id="listCount">0 条</span></div>
+        <span class="list-note">点击卡片上的“补款/编辑”即可更新</span>
+      </div>
+      <section class="records-grid" id="recordsGrid" aria-live="polite"></section>
+    </main>
+
+    <footer class="footer">
+      <span>模玩预定簿 · 本地优先</span>
+      <button class="text-button" id="footerSettings" type="button">数据备份与设置</button>
+    </footer>
+  </div>
+  <button class="fab" id="fab" type="button" aria-label="新增预定">＋</button>
+
+  <dialog class="sheet" id="recordDialog" aria-labelledby="recordDialogTitle">
+    <form method="dialog" class="sheet-surface" id="recordForm">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <div><span class="eyebrow">预定记录</span><h2 id="recordDialogTitle">新增预定</h2></div>
+        <button class="icon-button" type="button" data-close-dialog="recordDialog" aria-label="关闭">×</button>
+      </div>
+      <input type="hidden" id="recordId">
+      <div class="form-scroll">
+        <section class="form-section">
+          <h3>商品信息</h3>
+          <div class="form-grid">
+            <label class="field wide"><span>商品名称 <b>*</b></span><input id="name" name="name" required maxlength="80" placeholder="例如：S.H.Figuarts 假面骑士"></label>
+            <label class="field"><span>版本 / 规格</span><input id="version" name="version" maxlength="50" placeholder="初版、再版、特典版"></label>
+            <label class="field"><span>平台 / 店铺</span><input id="platform" name="platform" list="platformOptions" maxlength="50" placeholder="万代官方旗舰店"><datalist id="platformOptions"><option value="万代官方微商城"></option><option value="万代官方旗舰店"></option><option value="闲鱼"></option><option value="其他"></option></datalist></label>
+            <label class="field wide"><span>订单号</span><input id="orderNo" name="orderNo" maxlength="60" placeholder="可选"></label>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <h3>日期与状态</h3>
+          <div class="form-grid">
+            <label class="field"><span>预定日期</span><input id="preorderDate" name="preorderDate" type="date"></label>
+            <label class="field"><span>发售 / 出货日</span><input id="releaseDate" name="releaseDate" type="date"></label>
+            <label class="field"><span>补款截止日</span><input id="paymentDeadline" name="paymentDeadline" type="date"></label>
+            <label class="field"><span>状态</span><select id="status" name="status"><option value="待付定金">待付定金</option><option value="待补款" selected>待补款</option><option value="已补款待发货">已补款待发货</option><option value="已发货">已发货</option><option value="已到货">已到货</option><option value="已取消">已取消</option></select></label>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <h3>金额</h3>
+          <div class="form-grid form-grid-3">
+            <label class="field"><span>全款 / 预计总价 <b>*</b></span><div class="money-input"><span>¥</span><input id="total" name="total" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="0"></div></label>
+            <label class="field"><span>定金（已支付）</span><div class="money-input"><span>¥</span><input id="deposit" name="deposit" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></div></label>
+            <label class="field"><span>已补款（累计）</span><div class="money-input"><span>¥</span><input id="paidBalance" name="paidBalance" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></div></label>
+          </div>
+          <div class="calc-strip" aria-live="polite">
+            <div><span>补款应付</span><strong id="formDue">¥0</strong></div>
+            <div><span>剩余待付</span><strong id="formRemaining">¥0</strong></div>
+            <div><span>已支付合计</span><strong id="formPaidTotal">¥0</strong></div>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <h3>备注</h3>
+          <label class="field"><span>备注 / 链接</span><textarea id="note" name="note" rows="3" maxlength="300" placeholder="补款方式、特典、到货提醒等"></textarea></label>
+        </section>
+        <p class="form-error" id="formError" role="alert"></p>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn btn-danger-soft" id="deleteRecordButton" type="button" hidden>删除</button>
+        <span class="actions-spacer"></span>
+        <button class="btn btn-ghost" type="button" data-close-dialog="recordDialog">取消</button>
+        <button class="btn btn-primary" type="submit">保存记录</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet sheet-small" id="paymentDialog" aria-labelledby="paymentDialogTitle">
+    <form method="dialog" class="sheet-surface" id="paymentForm">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <div><span class="eyebrow">快速补款</span><h2 id="paymentDialogTitle">记录一笔补款</h2></div>
+        <button class="icon-button" type="button" data-close-dialog="paymentDialog" aria-label="关闭">×</button>
+      </div>
+      <div class="payment-summary"><strong id="paymentName">商品</strong><span id="paymentMeta">剩余待付 ¥0</span></div>
+      <label class="field"><span>本次补款金额</span><div class="money-input money-input-large"><span>¥</span><input id="paymentAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="0"></div></label>
+      <div class="quick-pay-row"><button class="chip-button" type="button" data-pay-fill="remaining">补足剩余</button><button class="chip-button" type="button" data-pay-fill="half">剩余的一半</button></div>
+      <p class="form-error" id="paymentError" role="alert"></p>
+      <div class="sheet-actions"><span class="actions-spacer"></span><button class="btn btn-ghost" type="button" data-close-dialog="paymentDialog">取消</button><button class="btn btn-primary" type="submit">确认补款</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet sheet-small" id="settingsDialog" aria-labelledby="settingsDialogTitle">
+    <div class="sheet-surface">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <div><span class="eyebrow">设置</span><h2 id="settingsDialogTitle">数据与安装</h2></div>
+        <button class="icon-button" type="button" data-close-dialog="settingsDialog" aria-label="关闭">×</button>
+      </div>
+      <div class="settings-scroll">
+        <div class="settings-summary">
+          <div><span>当前记录</span><strong id="settingsCount">0</strong></div>
+          <div><span>存储位置</span><strong>当前浏览器</strong></div>
+          <div><span>版本</span><strong>1.0</strong></div>
+        </div>
+
+        <section class="settings-section">
+          <h3>安装到主屏幕</h3>
+          <p>iPhone / iPad：用 Safari 打开本页，点分享按钮，选择“添加到主屏幕”。安装后可以像 App 一样全屏打开。</p>
+          <button class="btn btn-primary full-width" id="installButton" type="button" hidden>安装到主屏幕</button>
+        </section>
+
+        <section class="settings-section">
+          <h3>数据备份</h3>
+          <p>数据默认只保存在当前浏览器。换设备或清理浏览器数据前，请先导出备份。</p>
+          <div class="settings-actions">
+            <button class="btn btn-secondary" id="exportJsonButton" type="button">导出完整备份</button>
+            <button class="btn btn-secondary" id="exportCsvButton" type="button">导出 CSV</button>
+            <button class="btn btn-secondary" id="importButton" type="button">导入备份</button>
+            <input id="importFile" type="file" accept=".json,application/json" hidden>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>使用建议</h3>
+          <ul class="plain-list">
+            <li>记录时把“定金”填成已经支付的金额；还没付就填 0。</li>
+            <li>补款后直接用卡片上的“补款”按钮，不用重新填整条记录。</li>
+            <li>补款截止前 14 天会标红，发售前 30 天会标蓝。</li>
+          </ul>
+        </section>
+
+        <section class="settings-section settings-danger">
+          <h3>危险操作</h3>
+          <button class="btn btn-danger-soft full-width" id="clearDataButton" type="button">清空全部记录</button>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+  <noscript><div class="noscript">这个工具需要启用 JavaScript 才能使用。</div></noscript>
+  <script src="./app.js" defer></script>
+</body>
+</html>

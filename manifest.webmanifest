@@ -1,0 +1,16 @@
+{
+  "name": "模玩预定簿",
+  "short_name": "预定簿",
+  "description": "记录模玩预定、定金、补款、发售日和到货状态。",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#eef2f7",
+  "theme_color": "#0f172a",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
