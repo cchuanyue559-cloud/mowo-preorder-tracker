@@ -361,7 +361,7 @@ body.modal-open { overflow: hidden; }
   .brand-mark { width: 40px; height: 40px; flex-basis: 40px; }
   .brand-copy strong { font-size: 16px; }
   .brand-copy small { display: none; }
-  .top-add { display: none; }
+  .top-add { display: inline-flex; min-height: 38px; padding: 0 12px; font-size: 11px; }
   .main { gap: 16px; }
   .hero { padding: 23px 19px; border-radius: 23px; }
   .hero h1 { font-size: 31px; }
@@ -383,12 +383,7 @@ body.modal-open { overflow: hidden; }
   .card-title { font-size: 17px; }
   .card-actions .btn { min-height: 38px; flex: 1; }
   .card-actions .btn-edit { margin-left: 0; }
-  .fab {
-    display: grid; place-items: center; position: fixed; z-index: 30; right: 18px;
-    bottom: calc(20px + var(--safe-bottom)); width: 56px; height: 56px; border: 0; border-radius: 50%;
-    color: #fff; background: var(--blue); box-shadow: 0 15px 34px rgba(37,99,235,.34);
-    font-size: 28px; line-height: 1;
-  }
+  .fab { display: none; }
   .fab:focus-visible { outline: 3px solid rgba(37,99,235,.35); outline-offset: 4px; }
   .footer { padding-bottom: 8px; }
   .sheet { width: 100%; max-width: none; max-height: 94vh; margin: auto 0 0; border-radius: 23px 23px 0 0; }
@@ -414,6 +409,7 @@ body.modal-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
 
 
 
