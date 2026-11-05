@@ -1,7 +1,7 @@
 {
   "name": "模玩预定簿",
   "short_name": "预定簿",
-  "description": "记录模玩预定、定金、补款、发售日和到货状态。",
+  "description": "记录模玩预定、愿望单、定金、补款和发售月份。",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
@@ -14,3 +14,4 @@
     { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }
+

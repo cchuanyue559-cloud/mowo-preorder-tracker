@@ -42,11 +42,16 @@
     </header>
 
     <main class="main">
+      <nav class="view-switch" role="tablist" aria-label="功能切换">
+        <button class="view-tab active" type="button" data-view="preorder" role="tab" aria-selected="true">预定记录 <span id="preorderViewCount">0</span></button>
+        <button class="view-tab" type="button" data-view="wishlist" role="tab" aria-selected="false">愿望单 <span id="wishlistViewCount">0</span></button>
+      </nav>
+      <section class="view-panel" id="preorderView" data-view-panel="preorder">
       <section class="hero" aria-labelledby="heroTitle">
         <div class="hero-copy">
           <span class="eyebrow" id="greeting">今天要留意什么？</span>
           <h1 id="heroTitle">把预定期待办，收进一个地方。</h1>
-          <p id="heroSub">记录全款、定金和补款；临近补款与发售时，一眼就能看到。</p>
+          <p id="heroSub">记录全款、定金和补款；用发售月份查看接下来的预定。</p>
           <div class="hero-meta"><span class="hero-dot"></span><span>数据自动保存在当前浏览器</span></div>
         </div>
         <div class="next-card" id="nextCard">
@@ -60,7 +65,7 @@
       <section class="stats-grid" aria-label="预定统计">
         <article class="stat-card"><span class="stat-label">进行中预定</span><strong class="stat-value" id="statActive">0</strong><span class="stat-hint">未到货、未取消</span></article>
         <article class="stat-card stat-amber"><span class="stat-label">剩余待付</span><strong class="stat-value" id="statDue">¥0</strong><span class="stat-hint">定金与已补款之外</span></article>
-        <article class="stat-card stat-blue"><span class="stat-label">30天内发售</span><strong class="stat-value" id="statUpcoming">0</strong><span class="stat-hint">按发售/出货日计算</span></article>
+        <article class="stat-card stat-blue"><span class="stat-label">30天内发售</span><strong class="stat-value" id="statUpcoming">0</strong><span class="stat-hint">按发售月份计算</span></article>
         <article class="stat-card stat-green"><span class="stat-label">已到货</span><strong class="stat-value" id="statArrived">0</strong><span class="stat-hint">可以安心拆盒了</span></article>
       </section>
 
@@ -74,15 +79,14 @@
         <div class="toolbar-controls">
           <label class="search-box">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.2 4.2"/></svg>
-            <input id="searchInput" type="search" placeholder="搜商品 / 店铺 / 订单号" autocomplete="off">
+            <input id="searchInput" type="search" placeholder="搜商品 / 店铺" autocomplete="off">
           </label>
           <label class="select-wrap">
             <span class="sr-only">排序方式</span>
             <select id="sortSelect">
               <option value="smart">智能排序</option>
-              <option value="release">按发售日</option>
-              <option value="deadline">按补款截止</option>
-              <option value="created">按预定时间</option>
+              <option value="release">按发售月份</option>
+              <option value="created">按添加时间</option>
               <option value="amount">按待付金额</option>
             </select>
           </label>
@@ -91,9 +95,56 @@
 
       <div class="list-heading">
         <div><strong id="listTitle">全部记录</strong><span id="listCount">0 条</span></div>
-        <span class="list-note">点击卡片上的“补款/编辑”即可更新</span>
+        <span class="list-note">一键补款或编辑记录</span>
       </div>
       <section class="records-grid" id="recordsGrid" aria-live="polite"></section>
+      </section>
+
+      <section class="view-panel" id="wishlistView" data-view-panel="wishlist" hidden>
+        <section class="wishlist-hero">
+          <div>
+            <span class="eyebrow">愿望单</span>
+            <h1>想买，但先记下来。</h1>
+            <p>记录想入手的模型、目标价格和发售月份。遇到好价时，再决定是否预定。</p>
+            <button class="btn btn-primary" id="wishlistHeroAdd" type="button">＋ 添加愿望</button>
+          </div>
+          <div class="wishlist-hero-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64"><path d="M32 52S10 39 10 23a12 12 0 0 1 22-6 12 12 0 0 1 22 6c0 16-22 29-22 29Z"/></svg>
+          </div>
+        </section>
+        <section class="stats-grid" aria-label="愿望单统计">
+          <article class="stat-card"><span class="stat-label">未购愿望</span><strong class="stat-value" id="wishlistStatActive">0</strong><span class="stat-hint">观望中与等待好价</span></article>
+          <article class="stat-card stat-amber"><span class="stat-label">必买</span><strong class="stat-value" id="wishlistStatMust">0</strong><span class="stat-hint">优先关注的愿望</span></article>
+          <article class="stat-card stat-green"><span class="stat-label">已购</span><strong class="stat-value" id="wishlistStatBought">0</strong><span class="stat-hint">已经从愿望单毕业</span></article>
+        </section>
+        <section class="toolbar" aria-label="愿望单筛选与排序">
+          <div class="filter-tabs" id="wishlistFilters" role="tablist" aria-label="愿望筛选">
+            <button class="filter-tab active" type="button" data-wishlist-filter="all" role="tab" aria-selected="true">全部</button>
+            <button class="filter-tab" type="button" data-wishlist-filter="active" role="tab" aria-selected="false">未购</button>
+            <button class="filter-tab" type="button" data-wishlist-filter="done" role="tab" aria-selected="false">已购 / 已放弃</button>
+          </div>
+          <div class="toolbar-controls">
+            <label class="search-box">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.2 4.2"/></svg>
+              <input id="wishlistSearchInput" type="search" placeholder="搜愿望商品 / 店铺" autocomplete="off">
+            </label>
+            <label class="select-wrap">
+              <span class="sr-only">愿望排序方式</span>
+              <select id="wishlistSortSelect">
+                <option value="smart">智能排序</option>
+                <option value="release">按发售月份</option>
+                <option value="price">按目标价格</option>
+                <option value="created">按添加时间</option>
+              </select>
+            </label>
+          </div>
+        </section>
+        <div class="list-heading">
+          <div><strong id="wishlistListTitle">全部愿望</strong><span id="wishlistListCount">0 个</span></div>
+          <span class="list-note">“标记已购”可快速归档</span>
+        </div>
+        <section class="records-grid" id="wishlistGrid" aria-live="polite"></section>
+      </section>
     </main>
 
     <footer class="footer">
@@ -116,9 +167,7 @@
           <h3>商品信息</h3>
           <div class="form-grid">
             <label class="field wide"><span>商品名称 <b>*</b></span><input id="name" name="name" required maxlength="80" placeholder="例如：S.H.Figuarts 假面骑士"></label>
-            <label class="field"><span>版本 / 规格</span><input id="version" name="version" maxlength="50" placeholder="初版、再版、特典版"></label>
             <label class="field"><span>平台 / 店铺</span><input id="platform" name="platform" list="platformOptions" maxlength="50" placeholder="万代官方旗舰店"><datalist id="platformOptions"><option value="万代官方微商城"></option><option value="万代官方旗舰店"></option><option value="闲鱼"></option><option value="其他"></option></datalist></label>
-            <label class="field wide"><span>订单号</span><input id="orderNo" name="orderNo" maxlength="60" placeholder="可选"></label>
             <div class="field wide">
               <span>商品图片</span>
               <div class="image-editor">
@@ -140,11 +189,9 @@
         </section>
 
         <section class="form-section">
-          <h3>日期与状态</h3>
+          <h3>发售与状态</h3>
           <div class="form-grid">
-            <label class="field"><span>预定日期</span><input id="preorderDate" name="preorderDate" type="date"></label>
-            <label class="field"><span>发售 / 出货日</span><input id="releaseDate" name="releaseDate" type="date"></label>
-            <label class="field"><span>补款截止日</span><input id="paymentDeadline" name="paymentDeadline" type="date"></label>
+            <label class="field"><span>发售月份</span><input id="releaseMonth" name="releaseMonth" type="month"></label>
             <label class="field"><span>状态</span><select id="status" name="status"><option value="待付定金">待付定金</option><option value="待补款" selected>待补款</option><option value="已补款待发货">已补款待发货</option><option value="已发货">已发货</option><option value="已到货">已到货</option><option value="已取消">已取消</option></select></label>
           </div>
         </section>
@@ -178,18 +225,56 @@
     </form>
   </dialog>
 
-  <dialog class="sheet sheet-small" id="paymentDialog" aria-labelledby="paymentDialogTitle">
-    <form method="dialog" class="sheet-surface" id="paymentForm">
+
+  <dialog class="sheet" id="wishlistDialog" aria-labelledby="wishlistDialogTitle">
+    <form method="dialog" class="sheet-surface" id="wishlistForm">
       <div class="sheet-handle" aria-hidden="true"></div>
       <div class="sheet-header">
-        <div><span class="eyebrow">快速补款</span><h2 id="paymentDialogTitle">记录一笔补款</h2></div>
-        <button class="icon-button" type="button" data-close-dialog="paymentDialog" aria-label="关闭">×</button>
+        <div><span class="eyebrow">愿望单</span><h2 id="wishlistDialogTitle">添加愿望</h2></div>
+        <button class="icon-button" type="button" data-close-dialog="wishlistDialog" aria-label="关闭">×</button>
       </div>
-      <div class="payment-summary"><strong id="paymentName">商品</strong><span id="paymentMeta">剩余待付 ¥0</span></div>
-      <label class="field"><span>本次补款金额</span><div class="money-input money-input-large"><span>¥</span><input id="paymentAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="0"></div></label>
-      <div class="quick-pay-row"><button class="chip-button" type="button" data-pay-fill="remaining">补足剩余</button><button class="chip-button" type="button" data-pay-fill="half">剩余的一半</button></div>
-      <p class="form-error" id="paymentError" role="alert"></p>
-      <div class="sheet-actions"><span class="actions-spacer"></span><button class="btn btn-ghost" type="button" data-close-dialog="paymentDialog">取消</button><button class="btn btn-primary" type="submit">确认补款</button></div>
+      <input type="hidden" id="wishlistId">
+      <div class="form-scroll">
+        <section class="form-section">
+          <h3>愿望信息</h3>
+          <div class="form-grid">
+            <label class="field wide"><span>商品名称 <b>*</b></span><input id="wishlistName" maxlength="80" required placeholder="例如：METAL BUILD 命运高达"></label>
+            <label class="field"><span>平台 / 店铺</span><input id="wishlistPlatform" list="platformOptions" maxlength="50" placeholder="万代官方旗舰店"></label>
+            <label class="field"><span>发售月份</span><input id="wishlistReleaseMonth" type="month"></label>
+            <label class="field"><span>目标价格</span><div class="money-input"><span>¥</span><input id="wishlistTargetPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></div></label>
+            <label class="field"><span>优先程度</span><select id="wishlistPriority"><option value="普通">普通</option><option value="优先">优先</option><option value="必买">必买</option></select></label>
+            <label class="field"><span>状态</span><select id="wishlistStatus"><option value="观望中">观望中</option><option value="等待好价">等待好价</option><option value="已购">已购</option><option value="已放弃">已放弃</option></select></label>
+            <div class="field wide">
+              <span>商品图片</span>
+              <div class="image-editor">
+                <div class="image-editor-preview" id="wishlistImagePreview">
+                  <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="6" width="22" height="20" rx="4"/><circle cx="12" cy="13" r="2.5"/><path d="m8 23 6-6 4 4 3-3 3 3"/></svg>
+                  <img id="wishlistImagePreviewImg" alt="愿望商品图片预览" hidden>
+                </div>
+                <div class="image-editor-copy">
+                  <div class="image-editor-actions">
+                    <button class="btn btn-secondary btn-small" id="wishlistChooseImageButton" type="button">选择图片</button>
+                    <button class="text-button" id="wishlistRemoveImageButton" type="button" hidden>移除图片</button>
+                  </div>
+                  <p>支持相册或拍照，自动压缩后保存在本机。</p>
+                </div>
+              </div>
+              <input id="wishlistImageInput" type="file" accept="image/*" hidden>
+            </div>
+          </div>
+        </section>
+        <section class="form-section">
+          <h3>备注</h3>
+          <label class="field"><span>备注</span><textarea id="wishlistNote" rows="3" maxlength="300" placeholder="好价目标、版本偏好、购买渠道等"></textarea></label>
+        </section>
+        <p class="form-error" id="wishlistFormError" role="alert"></p>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn btn-danger-soft" id="deleteWishlistButton" type="button" hidden>删除</button>
+        <span class="actions-spacer"></span>
+        <button class="btn btn-ghost" type="button" data-close-dialog="wishlistDialog">取消</button>
+        <button class="btn btn-primary" type="submit">保存愿望</button>
+      </div>
     </form>
   </dialog>
 
@@ -202,9 +287,9 @@
       </div>
       <div class="settings-scroll">
         <div class="settings-summary">
-          <div><span>当前记录</span><strong id="settingsCount">0</strong></div>
+          <div><span>当前条目</span><strong id="settingsCount">0</strong></div>
           <div><span>存储位置</span><strong>当前浏览器</strong></div>
-          <div><span>版本</span><strong>1.1</strong></div>
+          <div><span>版本</span><strong>2.0</strong></div>
         </div>
 
         <section class="settings-section">
@@ -228,8 +313,8 @@
           <h3>使用建议</h3>
           <ul class="plain-list">
             <li>记录时把“定金”填成已经支付的金额；还没付就填 0。</li>
-            <li>补款后直接用卡片上的“补款”按钮，不用重新填整条记录。</li>
-            <li>补款截止前 14 天会标红，发售前 30 天会标蓝。商品图片会自动压缩，避免占用过多空间。</li>
+            <li>补款时直接点卡片上的“补款”按钮，会一次记录剩余待付款。</li>
+            <li>发售月份临近时卡片会提示。商品图片会自动压缩，避免占用过多空间。</li>
           </ul>
         </section>
 
@@ -246,5 +331,8 @@
   <script src="./app.js" defer></script>
 </body>
 </html>
+
+
+
 
 

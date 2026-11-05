@@ -1,6 +1,7 @@
 'use strict';
 
 const STORAGE_KEY = 'mowo-preorders-v1';
+const WISHLIST_KEY = 'mowo-wishlist-v1';
 const CHANNEL_NAME = 'mowo-preorders-updates';
 const MEDIA_DB_NAME = 'mowo-preorder-media';
 const MEDIA_STORE_NAME = 'images';
@@ -19,7 +20,14 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
 const elements = {
+  addButton: $('#addButton'),
+  viewTabs: $$('.view-tab'),
+  preorderView: $('#preorderView'),
+  wishlistView: $('#wishlistView'),
+  preorderViewCount: $('#preorderViewCount'),
+  wishlistViewCount: $('#wishlistViewCount'),
   recordsGrid: $('#recordsGrid'),
+  wishlistGrid: $('#wishlistGrid'),
   statActive: $('#statActive'),
   statDue: $('#statDue'),
   statUpcoming: $('#statUpcoming'),
@@ -46,12 +54,24 @@ const elements = {
   removeImageButton: $('#removeImageButton'),
   recordImagePreview: $('#recordImagePreview'),
   recordImagePreviewImg: $('#recordImagePreviewImg'),
-  paymentDialog: $('#paymentDialog'),
-  paymentForm: $('#paymentForm'),
-  paymentAmount: $('#paymentAmount'),
-  paymentName: $('#paymentName'),
-  paymentMeta: $('#paymentMeta'),
-  paymentError: $('#paymentError'),
+  wishlistStatActive: $('#wishlistStatActive'),
+  wishlistStatMust: $('#wishlistStatMust'),
+  wishlistStatBought: $('#wishlistStatBought'),
+  wishlistSearchInput: $('#wishlistSearchInput'),
+  wishlistSortSelect: $('#wishlistSortSelect'),
+  wishlistListTitle: $('#wishlistListTitle'),
+  wishlistListCount: $('#wishlistListCount'),
+  wishlistDialog: $('#wishlistDialog'),
+  wishlistForm: $('#wishlistForm'),
+  wishlistDialogTitle: $('#wishlistDialogTitle'),
+  wishlistId: $('#wishlistId'),
+  deleteWishlistButton: $('#deleteWishlistButton'),
+  wishlistImageInput: $('#wishlistImageInput'),
+  wishlistChooseImageButton: $('#wishlistChooseImageButton'),
+  wishlistRemoveImageButton: $('#wishlistRemoveImageButton'),
+  wishlistImagePreview: $('#wishlistImagePreview'),
+  wishlistImagePreviewImg: $('#wishlistImagePreviewImg'),
+  wishlistFormError: $('#wishlistFormError'),
   settingsDialog: $('#settingsDialog'),
   settingsCount: $('#settingsCount'),
   importFile: $('#importFile'),
@@ -60,13 +80,17 @@ const elements = {
 };
 
 let records = loadRecords();
+let wishlist = loadWishlist();
+let currentView = 'preorder';
 let currentFilter = 'all';
 let currentSort = 'smart';
 let currentQuery = '';
+let wishlistFilter = 'all';
+let wishlistSort = 'smart';
+let wishlistQuery = '';
 let editingId = null;
-let payingId = null;
+let editingWishlistId = null;
 let nextEventId = null;
-let nextEventAction = 'edit';
 let deferredInstallPrompt = null;
 let channel = null;
 let imageCache = new Map();
@@ -74,11 +98,15 @@ let mediaDbPromise = null;
 let pendingImageData = null;
 let pendingImageChanged = false;
 let pendingImageRemoved = false;
+let pendingWishlistImageData = null;
+let pendingWishlistImageChanged = false;
+let pendingWishlistImageRemoved = false;
 
 try {
   channel = new BroadcastChannel(CHANNEL_NAME);
   channel.addEventListener('message', async () => {
     records = loadRecords();
+    wishlist = loadWishlist();
     await hydrateImageCache();
     render();
   });
@@ -100,6 +128,11 @@ function normalizeRecord(raw = {}) {
     const text = String(value).slice(0, 10);
     return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
   };
+  const validMonth = (value) => {
+    if (!value) return '';
+    const text = String(value).slice(0, 7);
+    return /^\d{4}-\d{2}$/.test(text) ? text : '';
+  };
   return {
     id: String(raw.id || makeId()),
     name: String(raw.name || '').trim().slice(0, 80),
@@ -109,6 +142,7 @@ function normalizeRecord(raw = {}) {
     imageId: String(raw.imageId || '').trim(),
     preorderDate: validDate(raw.preorderDate),
     releaseDate: validDate(raw.releaseDate),
+    releaseMonth: validMonth(raw.releaseMonth || raw.releaseDate),
     paymentDeadline: validDate(raw.paymentDeadline),
     status: STATUS_META[raw.status] ? raw.status : '待补款',
     total: numberValue(raw.total),
@@ -118,6 +152,52 @@ function normalizeRecord(raw = {}) {
     createdAt: raw.createdAt || now,
     updatedAt: raw.updatedAt || now,
   };
+}
+
+function normalizeWishlist(raw = {}) {
+  const now = new Date().toISOString();
+  const validMonth = (value) => {
+    const text = String(value || '').slice(0, 7);
+    return /^\d{4}-\d{2}$/.test(text) ? text : '';
+  };
+  const allowedPriority = ['普通', '优先', '必买'];
+  const allowedStatus = ['观望中', '等待好价', '已购', '已放弃'];
+  return {
+    id: String(raw.id || makeId()),
+    name: String(raw.name || '').trim().slice(0, 80),
+    platform: String(raw.platform || '').trim().slice(0, 50),
+    imageId: String(raw.imageId || '').trim(),
+    releaseMonth: validMonth(raw.releaseMonth),
+    targetPrice: numberValue(raw.targetPrice),
+    priority: allowedPriority.includes(raw.priority) ? raw.priority : '普通',
+    status: allowedStatus.includes(raw.status) ? raw.status : '观望中',
+    note: String(raw.note || '').trim().slice(0, 300),
+    createdAt: raw.createdAt || now,
+    updatedAt: raw.updatedAt || now,
+  };
+}
+
+function loadWishlist() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(WISHLIST_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeWishlist).filter((item) => item.name);
+  } catch (error) {
+    console.warn('读取愿望单失败', error);
+    return [];
+  }
+}
+
+function saveWishlist() {
+  try {
+    localStorage.setItem(WISHLIST_KEY, JSON.stringify(wishlist));
+    channel?.postMessage({ type: 'updated' });
+    return true;
+  } catch (error) {
+    console.error('保存愿望单失败', error);
+    showToast('愿望单保存失败，请检查浏览器存储空间');
+    return false;
+  }
 }
 
 function loadRecords() {
@@ -214,7 +294,7 @@ async function clearCachedImages() {
 async function hydrateImageCache() {
   try {
     imageCache = new Map(await getAllCachedImages());
-    const usedIds = new Set(records.map((record) => record.imageId).filter(Boolean));
+    const usedIds = new Set([...records, ...wishlist].map((item) => item.imageId).filter(Boolean));
     for (const id of Array.from(imageCache.keys())) {
       if (!usedIds.has(id)) {
         imageCache.delete(id);
@@ -263,12 +343,11 @@ function calculate(record) {
   const remaining = Math.max(0, round2(total - deposit - paidBalance));
   const paidTotal = round2(deposit + paidBalance);
   const progress = total > 0 ? Math.min(100, Math.round((paidTotal / total) * 100)) : 0;
-  const deadlineDays = daysUntil(record.paymentDeadline);
-  const releaseDays = daysUntil(record.releaseDate);
+  const releaseDays = daysUntilMonth(record.releaseMonth || record.releaseDate);
   const done = DONE_STATUSES.has(record.status);
-  const urgent = !done && remaining > 0 && deadlineDays !== null && deadlineDays <= 14;
-  const upcoming = !done && !urgent && releaseDays !== null && releaseDays >= 0 && releaseDays <= 30;
-  return { total, deposit, paidBalance, due, remaining, paidTotal, progress, deadlineDays, releaseDays, done, urgent, upcoming };
+  const urgent = false;
+  const upcoming = !done && releaseDays !== null && releaseDays >= 0 && releaseDays <= 30;
+  return { total, deposit, paidBalance, due, remaining, paidTotal, progress, releaseDays, done, urgent, upcoming };
 }
 
 function round2(value) {
@@ -278,6 +357,31 @@ function round2(value) {
 function todayISO() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function daysUntilMonth(monthText) {
+  if (!monthText) return null;
+  const text = String(monthText).slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(text)) return null;
+  return daysUntil(`${text}-01`);
+}
+
+function formatMonth(monthText) {
+  if (!monthText) return '月份待定';
+  const [year, month] = monthText.split('-');
+  return `${year}年${month}月`;
+}
+
+function formatMonthCompact(monthText) {
+  if (!monthText) return '待定';
+  return monthText.replace('-', '.');
+}
+
+function monthRelativeLabel(days) {
+  if (days === null) return '月份待定';
+  if (days < 0) return `已过 ${Math.abs(days)} 天`;
+  if (days === 0) return '本月';
+  return `约 ${days} 天后`;
 }
 
 function daysUntil(dateText) {
@@ -322,17 +426,30 @@ function escapeHTML(value) {
   }[char]));
 }
 
-function showToast(message) {
+function showToast(message, actionLabel = '', onAction = null, duration = 2200) {
   const node = document.createElement('div');
   node.className = 'toast';
-  node.textContent = message;
-  elements.toastRegion.appendChild(node);
+  const text = document.createElement('span');
+  text.textContent = message;
+  node.appendChild(text);
+  if (actionLabel && onAction) {
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'toast-action';
+    action.textContent = actionLabel;
+    action.addEventListener('click', () => {
+      node.remove();
+      onAction();
+    });
+    node.appendChild(action);
+  }
+  elements.toastRegion.replaceChildren(node);
   window.setTimeout(() => {
     node.style.opacity = '0';
     node.style.transform = 'translateY(6px)';
     node.style.transition = 'opacity .18s ease, transform .18s ease';
     window.setTimeout(() => node.remove(), 200);
-  }, 2200);
+  }, duration);
 }
 
 function statusClass(status) {
@@ -343,7 +460,7 @@ function getFilteredRecords() {
   const query = currentQuery.trim().toLowerCase();
   let list = records.filter((record) => {
     if (query) {
-      const haystack = [record.name, record.version, record.platform, record.orderNo, record.note].join(' ').toLowerCase();
+      const haystack = [record.name, record.platform, record.note].join(' ').toLowerCase();
       if (!haystack.includes(query)) return false;
     }
     const calc = calculate(record);
@@ -353,40 +470,29 @@ function getFilteredRecords() {
     return true;
   });
 
-  const dateValue = (value) => value || '9999-12-31';
-  const urgencyRank = (record) => {
+  const monthValue = (value) => value || '9999-12';
+  const smartRank = (record) => {
     const calc = calculate(record);
-    if (calc.done) return 5;
-    if (calc.urgent && calc.deadlineDays < 0) return 0;
-    if (calc.urgent) return 1;
-    if (calc.upcoming) return 2;
-    return 3;
+    if (calc.done) return 3;
+    if (calc.upcoming) return 0;
+    return 1;
   };
 
   list = list.slice().sort((a, b) => {
-    if (currentSort === 'release') return dateValue(a.releaseDate).localeCompare(dateValue(b.releaseDate));
-    if (currentSort === 'deadline') return dateValue(a.paymentDeadline).localeCompare(dateValue(b.paymentDeadline));
+    if (currentSort === 'release') return monthValue(a.releaseMonth).localeCompare(monthValue(b.releaseMonth));
     if (currentSort === 'created') return String(b.createdAt).localeCompare(String(a.createdAt));
     if (currentSort === 'amount') return calculate(b).remaining - calculate(a).remaining;
-    const rankDiff = urgencyRank(a) - urgencyRank(b);
+    const rankDiff = smartRank(a) - smartRank(b);
     if (rankDiff) return rankDiff;
-    return dateValue(a.releaseDate).localeCompare(dateValue(b.releaseDate));
+    return monthValue(a.releaseMonth).localeCompare(monthValue(b.releaseMonth));
   });
   return list;
 }
 
 function getNextEvent() {
-  const candidates = [];
-  records.forEach((record) => {
-    const calc = calculate(record);
-    if (calc.done) return;
-    if (calc.remaining > 0 && record.paymentDeadline) {
-      candidates.push({ record, type: 'payment', date: record.paymentDeadline, days: calc.deadlineDays });
-    }
-    if (record.releaseDate) {
-      candidates.push({ record, type: 'release', date: record.releaseDate, days: calc.releaseDays });
-    }
-  });
+  const candidates = records
+    .filter((record) => !DONE_STATUSES.has(record.status) && record.releaseMonth)
+    .map((record) => ({ record, date: record.releaseMonth, days: calculate(record).releaseDays }));
   candidates.sort((a, b) => a.date.localeCompare(b.date));
   return candidates[0] || null;
 }
@@ -394,7 +500,10 @@ function getNextEvent() {
 function render() {
   renderSummary();
   renderRecords();
-  if (elements.settingsDialog.open) elements.settingsCount.textContent = String(records.length);
+  renderWishlist();
+  elements.preorderViewCount.textContent = String(records.length);
+  elements.wishlistViewCount.textContent = String(wishlist.length);
+  if (elements.settingsDialog.open) elements.settingsCount.textContent = String(records.length + wishlist.length);
 }
 
 function renderSummary() {
@@ -402,7 +511,6 @@ function renderSummary() {
   const due = active.reduce((sum, record) => sum + calculate(record).remaining, 0);
   const upcoming = records.filter((record) => calculate(record).upcoming).length;
   const arrived = records.filter((record) => record.status === '已到货').length;
-  const urgent = records.filter((record) => calculate(record).urgent).length;
 
   elements.statActive.textContent = String(active.length);
   elements.statDue.textContent = formatMoney(due);
@@ -414,82 +522,74 @@ function renderSummary() {
 
   if (!records.length) {
     elements.heroTitle.textContent = '把预定期待办，收进一个地方。';
-    elements.heroSub.textContent = '记录全款、定金和补款；临近补款与发售时，一眼就能看到。';
+    elements.heroSub.textContent = '记录全款、定金和补款；用发售月份查看接下来的预定。';
   } else {
     elements.heroTitle.textContent = `还有 ${active.length} 件预定在进行中。`;
-    if (urgent > 0) {
-      elements.heroSub.textContent = `有 ${urgent} 笔补款临近或逾期，建议先处理。`;
-    } else if (upcoming > 0) {
-      elements.heroSub.textContent = `有 ${upcoming} 件将在 30 天内发售或出货。`;
+    if (upcoming > 0) {
+      elements.heroSub.textContent = `有 ${upcoming} 件将在 30 天内进入发售月份。`;
     } else {
-      elements.heroSub.textContent = '目前没有临近的补款或发售，可以安心等待。';
+      elements.heroSub.textContent = '目前没有临近的发售月份，可以安心等待。';
     }
   }
 
   const next = getNextEvent();
   nextEventId = next?.record.id || null;
-  nextEventAction = next?.type === 'payment' ? 'pay' : 'edit';
   if (next) {
-    const typeLabel = next.type === 'payment' ? '补款截止' : '发售 / 出货';
-    elements.nextCountdown.textContent = dayLabel(next.days, next.type === 'payment');
+    elements.nextCountdown.textContent = monthRelativeLabel(next.days);
     elements.nextName.textContent = next.record.name;
-    elements.nextDetail.textContent = `${typeLabel}：${formatDateCompact(next.date)} · ${dayLabel(next.days, next.type === 'payment')}`;
-    elements.nextAction.textContent = next.type === 'payment' ? '去补款' : '查看详情';
-    elements.nextCard.dataset.action = nextEventAction;
+    elements.nextDetail.textContent = `发售月份：${formatMonth(next.date)} · ${monthRelativeLabel(next.days)}`;
+    elements.nextAction.textContent = '查看详情';
+    elements.nextCard.dataset.action = 'edit';
     elements.nextCard.dataset.id = next.record.id;
   } else if (records.length) {
     elements.nextCountdown.textContent = '—';
-    elements.nextName.textContent = '目前没有临近的补款或发售';
-    elements.nextDetail.textContent = '补款或发售日期填好后，这里会自动提示。';
+    elements.nextName.textContent = '还没有填写发售月份';
+    elements.nextDetail.textContent = '补上发售月份后，这里会自动显示最近的预定。';
     elements.nextAction.textContent = '查看全部记录';
     elements.nextCard.dataset.action = 'all';
     elements.nextCard.dataset.id = '';
   } else {
     elements.nextCountdown.textContent = '—';
     elements.nextName.textContent = '还没有需要关注的日期';
-    elements.nextDetail.textContent = '添加第一笔预定后，这里会自动提示最近的补款或发售。';
+    elements.nextDetail.textContent = '添加第一笔预定后，这里会自动提示最近的发售月份。';
     elements.nextAction.textContent = '添加第一笔';
     elements.nextCard.dataset.action = 'add';
     elements.nextCard.dataset.id = '';
   }
 }
 
-function eventDateHTML(dateText, days, isDeadline = false) {
-  if (!dateText) return '<strong>待定</strong>';
-  const className = days !== null && days < 0 && isDeadline ? ' class="is-overdue"' : '';
-  return `<strong${className}>${formatDateCompact(dateText)} · ${dayLabel(days, isDeadline)}</strong>`;
+function eventMonthHTML(monthText, days) {
+  if (!monthText) return '<strong>月份待定</strong>';
+  const className = days !== null && days < 0 ? ' class="is-overdue"' : '';
+  return `<strong${className}>${formatMonth(monthText)}</strong>`;
 }
 
 function recordCardHTML(record) {
   const calc = calculate(record);
   const status = statusClass(record.status);
-  const metaParts = [record.version, record.platform, record.orderNo ? `订单 ${record.orderNo}` : ''].filter(Boolean);
-  const alert = calc.urgent
-    ? (calc.deadlineDays < 0 ? `补款逾期 ${Math.abs(calc.deadlineDays)} 天` : `补款 ${calc.deadlineDays === 0 ? '今天截止' : `${calc.deadlineDays} 天后截止`}`)
-    : calc.upcoming
-      ? (calc.releaseDays === 0 ? '今天发售' : `发售 ${calc.releaseDays} 天后`)
-      : '';
+  const alert = calc.upcoming ? `发售 ${monthRelativeLabel(calc.releaseDays)}` : '';
   const canPay = calc.remaining > 0 && !calc.done;
   const note = record.note ? `<p class="card-note">${escapeHTML(record.note)}</p>` : '';
   const imageUrl = record.imageId ? imageCache.get(record.imageId) : '';
+  const meta = record.platform || '还没有填写平台或店铺';
   const productBlock = `
     <div class="card-product">
       ${imageUrl ? `<img class="card-thumb" src="${escapeHTML(imageUrl)}" alt="${escapeHTML(record.name)} 商品图片" loading="lazy">` : ''}
       <div class="card-title-wrap">
         <h3 class="card-title">${escapeHTML(record.name)}</h3>
-        <p class="card-subtitle">${metaParts.length ? escapeHTML(metaParts.join(' · ')) : '还没有填写版本或店铺'}</p>
+        <p class="card-subtitle">${escapeHTML(meta)}</p>
       </div>
     </div>`;
   return `
-    <article class="record-card status-${status} ${calc.urgent ? 'is-urgent' : ''} ${calc.upcoming ? 'is-upcoming' : ''}">
+    <article class="record-card status-${status} ${calc.upcoming ? 'is-upcoming' : ''}">
       <div class="card-top">
         <span class="status-badge status-${status}">${escapeHTML(record.status)}</span>
-        ${alert ? `<span class="card-alert ${calc.upcoming ? 'upcoming' : ''}">${escapeHTML(alert)}</span>` : ''}
+        ${alert ? `<span class="card-alert upcoming">${escapeHTML(alert)}</span>` : ''}
       </div>
       ${productBlock}
       <div class="card-events">
-        <div class="event-block"><span>补款截止</span>${eventDateHTML(record.paymentDeadline, calc.deadlineDays, true)}</div>
-        <div class="event-block"><span>发售 / 出货</span>${eventDateHTML(record.releaseDate, calc.releaseDays, false)}</div>
+        <div class="event-block"><span>发售月份</span>${eventMonthHTML(record.releaseMonth, calc.releaseDays)}</div>
+        <div class="event-block"><span>平台 / 店铺</span><strong>${escapeHTML(record.platform || '未填写')}</strong></div>
       </div>
       <div class="money-block">
         <div class="money-line"><span>剩余待付</span><strong class="remaining">${formatMoney(calc.remaining)}</strong></div>
@@ -502,7 +602,7 @@ function recordCardHTML(record) {
       </div>
       ${note}
       <div class="card-actions">
-        ${canPay ? `<button class="btn btn-primary" type="button" data-action="pay" data-id="${escapeHTML(record.id)}">补款</button>` : ''}
+        ${canPay ? `<button class="btn btn-primary" type="button" data-action="pay" data-id="${escapeHTML(record.id)}">一键补款</button>` : ''}
         <button class="btn btn-ghost btn-edit" type="button" data-action="edit" data-id="${escapeHTML(record.id)}">编辑</button>
       </div>
     </article>`;
@@ -538,6 +638,130 @@ function renderRecords() {
   elements.recordsGrid.innerHTML = list.length ? list.map(recordCardHTML).join('') : emptyStateHTML();
 }
 
+function wishlistStatusClass(status) {
+  return { '观望中': 'pending', '等待好价': 'paid', '已购': 'arrived', '已放弃': 'cancelled' }[status] || 'pending';
+}
+
+function wishlistPriorityClass(priority) {
+  return { '普通': 'priority-normal', '优先': 'priority-high', '必买': 'priority-must' }[priority] || 'priority-normal';
+}
+
+function getFilteredWishlist() {
+  const query = wishlistQuery.trim().toLowerCase();
+  let list = wishlist.filter((item) => {
+    if (query) {
+      const haystack = [item.name, item.platform, item.note].join(' ').toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
+    const done = ['已购', '已放弃'].includes(item.status);
+    if (wishlistFilter === 'active') return !done;
+    if (wishlistFilter === 'done') return done;
+    return true;
+  });
+  const monthValue = (value) => value || '9999-12';
+  const priorityRank = (priority) => ({ '必买': 0, '优先': 1, '普通': 2 }[priority] ?? 2);
+  list = list.slice().sort((a, b) => {
+    if (wishlistSort === 'release') return monthValue(a.releaseMonth).localeCompare(monthValue(b.releaseMonth));
+    if (wishlistSort === 'price') return numberValue(b.targetPrice) - numberValue(a.targetPrice);
+    if (wishlistSort === 'created') return String(b.createdAt).localeCompare(String(a.createdAt));
+    const doneDiff = Number(['已购', '已放弃'].includes(a.status)) - Number(['已购', '已放弃'].includes(b.status));
+    if (doneDiff) return doneDiff;
+    const priorityDiff = priorityRank(a.priority) - priorityRank(b.priority);
+    if (priorityDiff) return priorityDiff;
+    return monthValue(a.releaseMonth).localeCompare(monthValue(b.releaseMonth));
+  });
+  return list;
+}
+
+function wishlistCardHTML(item) {
+  const status = wishlistStatusClass(item.status);
+  const imageUrl = item.imageId ? imageCache.get(item.imageId) : '';
+  const note = item.note ? `<p class="card-note">${escapeHTML(item.note)}</p>` : '';
+  const done = ['已购', '已放弃'].includes(item.status);
+  return `
+    <article class="record-card wishlist-card status-${status}">
+      <div class="card-top">
+        <span class="wishlist-priority ${wishlistPriorityClass(item.priority)}">${escapeHTML(item.priority)}</span>
+        <span class="status-badge status-${status}">${escapeHTML(item.status)}</span>
+      </div>
+      <div class="card-product">
+        ${imageUrl ? `<img class="card-thumb" src="${escapeHTML(imageUrl)}" alt="${escapeHTML(item.name)} 愿望图片" loading="lazy">` : ''}
+        <div class="card-title-wrap">
+          <h3 class="card-title">${escapeHTML(item.name)}</h3>
+          <p class="card-subtitle">${escapeHTML(item.platform || '还没有填写平台或店铺')}</p>
+        </div>
+      </div>
+      <div class="card-events">
+        <div class="event-block"><span>目标价格</span><strong>${item.targetPrice > 0 ? formatMoney(item.targetPrice) : '未设置'}</strong></div>
+        <div class="event-block"><span>发售月份</span><strong>${formatMonth(item.releaseMonth)}</strong></div>
+      </div>
+      ${note}
+      <div class="card-actions">
+        ${!done ? `<button class="btn btn-primary" type="button" data-action="wishlist-buy" data-id="${escapeHTML(item.id)}">标记已购</button>` : ''}
+        <button class="btn btn-ghost btn-edit" type="button" data-action="wishlist-edit" data-id="${escapeHTML(item.id)}">编辑</button>
+      </div>
+    </article>`;
+}
+
+function wishlistEmptyHTML() {
+  if (!wishlist.length) {
+    return `
+      <div class="empty-state wishlist-empty">
+        <div class="empty-icon"><svg viewBox="0 0 48 48"><path d="M24 40S8 31 8 19a9 9 0 0 1 16-5 9 9 0 0 1 16 5c0 12-16 21-16 21Z"/></svg></div>
+        <h3>愿望单还是空的</h3>
+        <p>把想买的模型先记下来，标上目标价格和发售月份。</p>
+        <div class="empty-actions"><button class="btn btn-primary" type="button" data-action="wishlist-add">添加第一个愿望</button></div>
+      </div>`;
+  }
+  return `<div class="empty-state wishlist-empty"><div class="empty-icon"><svg viewBox="0 0 48 48"><circle cx="21" cy="21" r="11"/><path d="m29 29 8 8M16 21h10"/></svg></div><h3>没有找到符合条件的愿望</h3><p>换个筛选条件或清空搜索词。</p><div class="empty-actions"><button class="btn btn-primary" type="button" data-action="clear-wishlist-filters">查看全部愿望</button></div></div>`;
+}
+
+function renderWishlist() {
+  const active = wishlist.filter((item) => !['已购', '已放弃'].includes(item.status));
+  elements.wishlistStatActive.textContent = String(active.length);
+  elements.wishlistStatMust.textContent = String(active.filter((item) => item.priority === '必买').length);
+  elements.wishlistStatBought.textContent = String(wishlist.filter((item) => item.status === '已购').length);
+  const list = getFilteredWishlist();
+  const titleMap = { all: '全部愿望', active: '未购愿望', done: '已购 / 已放弃' };
+  elements.wishlistListTitle.textContent = titleMap[wishlistFilter] || '全部愿望';
+  elements.wishlistListCount.textContent = `${list.length} 个`;
+  elements.wishlistGrid.innerHTML = list.length ? list.map(wishlistCardHTML).join('') : wishlistEmptyHTML();
+}
+
+elements.wishlistGrid.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-action]');
+  if (!button) return;
+  const action = button.dataset.action;
+  if (action === 'wishlist-add') return openWishlistDialog();
+  if (action === 'clear-wishlist-filters') {
+    wishlistFilter = 'all';
+    wishlistQuery = '';
+    elements.wishlistSearchInput.value = '';
+    $$('#wishlistFilters .filter-tab').forEach((tab) => {
+      const active = tab.dataset.wishlistFilter === 'all';
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', String(active));
+    });
+    return renderWishlist();
+  }
+  const id = button.dataset.id;
+  const item = wishlist.find((entry) => entry.id === id);
+  if (!item) return;
+  if (action === 'wishlist-edit') return openWishlistDialog(item);
+  if (action === 'wishlist-buy') {
+    const previous = { ...item };
+    wishlist = wishlist.map((entry) => entry.id === id ? { ...entry, status: '已购', updatedAt: new Date().toISOString() } : entry);
+    saveWishlist();
+    render();
+    showToast('已标记为已购', '撤销', () => {
+      wishlist = wishlist.map((entry) => entry.id === previous.id ? previous : entry);
+      saveWishlist();
+      render();
+      showToast('已撤销标记');
+    }, 3200);
+  }
+});
+
 elements.recordsGrid.addEventListener('click', (event) => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
@@ -557,7 +781,7 @@ elements.recordsGrid.addEventListener('click', (event) => {
   }
   const id = button.dataset.id;
   if (!id) return;
-  if (action === 'pay') return openPaymentDialog(id);
+  if (action === 'pay') return recordFullPayment(id);
   if (action === 'edit') {
     const record = records.find((item) => item.id === id);
     if (record) openRecordDialog(record);
@@ -568,12 +792,11 @@ elements.nextAction.addEventListener('click', () => {
   const action = elements.nextCard.dataset.action;
   const id = elements.nextCard.dataset.id;
   if (action === 'add') return openRecordDialog();
-  if (action === 'pay' && id) return openPaymentDialog(id);
   if (action === 'edit' && id) {
     const record = records.find((item) => item.id === id);
     if (record) return openRecordDialog(record);
   }
-  document.querySelector('.records-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  elements.recordsGrid.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 function showDialog(dialog) {
@@ -586,7 +809,7 @@ function closeDialog(dialog) {
 }
 
 function updateModalBodyState() {
-  const anyOpen = [elements.recordDialog, elements.paymentDialog, elements.settingsDialog].some((dialog) => dialog.open);
+  const anyOpen = [elements.recordDialog, elements.wishlistDialog, elements.settingsDialog].some((dialog) => dialog.open);
   document.body.classList.toggle('modal-open', anyOpen);
 }
 
@@ -601,12 +824,8 @@ function openRecordDialog(record = null) {
   elements.recordDialogTitle.textContent = record ? '编辑预定' : '新增预定';
   elements.deleteRecordButton.hidden = !record;
   $('#name').value = record?.name || '';
-  $('#version').value = record?.version || '';
   $('#platform').value = record?.platform || '';
-  $('#orderNo').value = record?.orderNo || '';
-  $('#preorderDate').value = record?.preorderDate || todayISO();
-  $('#releaseDate').value = record?.releaseDate || '';
-  $('#paymentDeadline').value = record?.paymentDeadline || '';
+  $('#releaseMonth').value = record?.releaseMonth || '';
   $('#status').value = record?.status || '待补款';
   $('#total').value = record?.total ? String(record.total) : '';
   $('#deposit').value = record?.deposit ? String(record.deposit) : '';
@@ -717,13 +936,14 @@ elements.recordForm.addEventListener('submit', async (event) => {
   const record = normalizeRecord({
     id: existing?.id || makeId(),
     name: $('#name').value,
-    version: $('#version').value,
+    version: existing?.version || '',
     platform: $('#platform').value,
-    orderNo: $('#orderNo').value,
+    orderNo: existing?.orderNo || '',
     imageId,
-    preorderDate: $('#preorderDate').value,
-    releaseDate: $('#releaseDate').value,
-    paymentDeadline: $('#paymentDeadline').value,
+    preorderDate: existing?.preorderDate || '',
+    releaseDate: existing?.releaseDate || '',
+    releaseMonth: $('#releaseMonth').value,
+    paymentDeadline: existing?.paymentDeadline || '',
     status: $('#status').value,
     total: numberValue($('#total').value),
     deposit: numberValue($('#deposit').value),
@@ -759,11 +979,183 @@ elements.deleteRecordButton.addEventListener('click', async () => {
   showToast('记录已删除');
 });
 
+
+function renderWishlistImagePreview() {
+  let src = '';
+  if (!pendingWishlistImageRemoved) {
+    if (pendingWishlistImageData) src = pendingWishlistImageData;
+    else if (editingWishlistId) {
+      const item = wishlist.find((entry) => entry.id === editingWishlistId);
+      src = item?.imageId ? imageCache.get(item.imageId) || '' : '';
+    }
+  }
+  const hasImage = Boolean(src);
+  elements.wishlistImagePreview.classList.toggle('has-image', hasImage);
+  elements.wishlistImagePreviewImg.hidden = !hasImage;
+  if (hasImage) elements.wishlistImagePreviewImg.src = src;
+  else elements.wishlistImagePreviewImg.removeAttribute('src');
+  elements.wishlistRemoveImageButton.hidden = !hasImage;
+}
+
+function openWishlistDialog(item = null) {
+  editingWishlistId = item?.id || null;
+  pendingWishlistImageData = null;
+  pendingWishlistImageChanged = false;
+  pendingWishlistImageRemoved = false;
+  elements.wishlistImageInput.value = '';
+  elements.wishlistForm.reset();
+  elements.wishlistId.value = item?.id || '';
+  elements.wishlistDialogTitle.textContent = item ? '编辑愿望' : '添加愿望';
+  elements.deleteWishlistButton.hidden = !item;
+  $('#wishlistName').value = item?.name || '';
+  $('#wishlistPlatform').value = item?.platform || '';
+  $('#wishlistReleaseMonth').value = item?.releaseMonth || '';
+  $('#wishlistTargetPrice').value = item?.targetPrice ? String(item.targetPrice) : '';
+  $('#wishlistPriority').value = item?.priority || '普通';
+  $('#wishlistStatus').value = item?.status || '观望中';
+  $('#wishlistNote').value = item?.note || '';
+  elements.wishlistFormError.textContent = '';
+  renderWishlistImagePreview();
+  showDialog(elements.wishlistDialog);
+  window.setTimeout(() => $('#wishlistName').focus(), 80);
+}
+
+elements.wishlistChooseImageButton.addEventListener('click', () => elements.wishlistImageInput.click());
+elements.wishlistRemoveImageButton.addEventListener('click', () => {
+  pendingWishlistImageData = null;
+  pendingWishlistImageChanged = true;
+  pendingWishlistImageRemoved = true;
+  renderWishlistImagePreview();
+});
+elements.wishlistImageInput.addEventListener('change', async () => {
+  const file = elements.wishlistImageInput.files?.[0];
+  if (!file) return;
+  const originalText = elements.wishlistChooseImageButton.textContent;
+  elements.wishlistChooseImageButton.disabled = true;
+  elements.wishlistChooseImageButton.textContent = '处理中…';
+  elements.wishlistFormError.textContent = '';
+  try {
+    pendingWishlistImageData = await compressImageFile(file);
+    pendingWishlistImageChanged = true;
+    pendingWishlistImageRemoved = false;
+    renderWishlistImagePreview();
+  } catch (error) {
+    console.error(error);
+    elements.wishlistFormError.textContent = error.message || '图片处理失败，请换一张图片。';
+  } finally {
+    elements.wishlistImageInput.value = '';
+    elements.wishlistChooseImageButton.disabled = false;
+    elements.wishlistChooseImageButton.textContent = originalText;
+  }
+});
+
+elements.wishlistForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = $('#wishlistName').value.trim();
+  if (!name) {
+    elements.wishlistFormError.textContent = '请填写商品名称。';
+    return;
+  }
+  const existing = editingWishlistId ? wishlist.find((item) => item.id === editingWishlistId) : null;
+  const now = new Date().toISOString();
+  let imageId = existing?.imageId || '';
+  try {
+    if (pendingWishlistImageChanged) {
+      if (pendingWishlistImageRemoved || !pendingWishlistImageData) {
+        if (imageId) await deleteCachedImage(imageId);
+        imageId = '';
+      } else {
+        if (!imageId) imageId = `img-${makeId()}`;
+        await putCachedImage(imageId, pendingWishlistImageData);
+      }
+    }
+  } catch (storageError) {
+    console.error(storageError);
+    elements.wishlistFormError.textContent = '图片保存失败，请检查浏览器存储空间。';
+    return;
+  }
+  const item = normalizeWishlist({
+    id: existing?.id || makeId(),
+    name,
+    platform: $('#wishlistPlatform').value,
+    imageId,
+    releaseMonth: $('#wishlistReleaseMonth').value,
+    targetPrice: numberValue($('#wishlistTargetPrice').value),
+    priority: $('#wishlistPriority').value,
+    status: $('#wishlistStatus').value,
+    note: $('#wishlistNote').value,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  });
+  wishlist = existing ? wishlist.map((entry) => entry.id === existing.id ? item : entry) : [item, ...wishlist];
+  if (!saveWishlist()) return;
+  closeDialog(elements.wishlistDialog);
+  render();
+  showToast(existing ? '愿望已更新' : '愿望已添加');
+});
+
+elements.deleteWishlistButton.addEventListener('click', async () => {
+  if (!editingWishlistId) return;
+  const item = wishlist.find((entry) => entry.id === editingWishlistId);
+  if (!item) return;
+  if (!window.confirm(`确定删除“${item.name}”吗？此操作不可撤销。`)) return;
+  if (item.imageId) {
+    try { await deleteCachedImage(item.imageId); }
+    catch (error) { console.warn('删除愿望图片失败', error); }
+  }
+  wishlist = wishlist.filter((entry) => entry.id !== editingWishlistId);
+  saveWishlist();
+  closeDialog(elements.wishlistDialog);
+  render();
+  showToast('愿望已删除');
+});
+
+function switchView(view) {
+  currentView = view;
+  elements.preorderView.hidden = view !== 'preorder';
+  elements.wishlistView.hidden = view !== 'wishlist';
+  elements.viewTabs.forEach((tab) => {
+    const active = tab.dataset.view === view;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+  });
+  elements.addButton.innerHTML = view === 'preorder' ? '<span aria-hidden="true">＋</span> 新增预定' : '<span aria-hidden="true">＋</span> 新增愿望';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openCreateDialog() {
+  if (currentView === 'wishlist') openWishlistDialog();
+  else openRecordDialog();
+}
+
+elements.viewTabs.forEach((tab) => tab.addEventListener('click', () => switchView(tab.dataset.view)));
+$('#wishlistHeroAdd').addEventListener('click', () => openWishlistDialog());
+
+$$('#wishlistFilters .filter-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    wishlistFilter = tab.dataset.wishlistFilter;
+    $$('#wishlistFilters .filter-tab').forEach((item) => {
+      const active = item === tab;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-selected', String(active));
+    });
+    renderWishlist();
+  });
+});
+elements.wishlistSearchInput.addEventListener('input', () => {
+  wishlistQuery = elements.wishlistSearchInput.value;
+  renderWishlist();
+});
+elements.wishlistSortSelect.addEventListener('change', () => {
+  wishlistSort = elements.wishlistSortSelect.value;
+  renderWishlist();
+});
+
 ['total', 'deposit', 'paidBalance'].forEach((id) => {
   $(`#${id}`).addEventListener('input', updateFormCalc);
 });
 
-function openPaymentDialog(id) {
+function recordFullPayment(id) {
   const record = records.find((item) => item.id === id);
   if (!record) return;
   const calc = calculate(record);
@@ -771,63 +1163,33 @@ function openPaymentDialog(id) {
     showToast('这笔预定已经没有待付款');
     return;
   }
-  payingId = id;
-  elements.paymentName.textContent = record.name;
-  elements.paymentMeta.textContent = `剩余待付 ${formatMoney(calc.remaining)} · 已付 ${formatMoney(calc.paidTotal)}`;
-  elements.paymentAmount.value = '';
-  elements.paymentAmount.max = String(calc.remaining);
-  elements.paymentError.textContent = '';
-  showDialog(elements.paymentDialog);
-  window.setTimeout(() => elements.paymentAmount.focus(), 80);
-}
-
-elements.paymentForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const record = records.find((item) => item.id === payingId);
-  if (!record) return;
-  const calc = calculate(record);
-  const amount = numberValue(elements.paymentAmount.value);
-  if (!elements.paymentAmount.value.trim() || amount <= 0) {
-    elements.paymentError.textContent = '请输入大于 0 的补款金额。';
-    return;
-  }
-  if (amount > calc.remaining + 0.001) {
-    elements.paymentError.textContent = '补款金额不能超过剩余待付。';
-    return;
-  }
-  const newPaid = round2(calc.paidBalance + amount);
-  const newRemaining = Math.max(0, round2(calc.remaining - amount));
+  const previous = { ...record };
+  const amount = calc.remaining;
   const updated = {
     ...record,
-    paidBalance: newPaid,
-    status: newRemaining <= 0 && ['待付定金', '待补款'].includes(record.status) ? '已补款待发货' : record.status,
+    paidBalance: round2(calc.paidBalance + amount),
+    status: ['待付定金', '待补款'].includes(record.status) ? '已补款待发货' : record.status,
     updatedAt: new Date().toISOString(),
   };
   records = records.map((item) => item.id === record.id ? updated : item);
   if (!saveRecords()) return;
-  closeDialog(elements.paymentDialog);
   render();
-  showToast(newRemaining <= 0 ? '已补清，状态更新为已补款待发货' : `已记录补款 ${formatMoney(amount)}`);
-});
-
-$$('[data-pay-fill]').forEach((button) => {
-  button.addEventListener('click', () => {
-    const record = records.find((item) => item.id === payingId);
-    if (!record) return;
-    const remaining = calculate(record).remaining;
-    elements.paymentAmount.value = String(button.dataset.payFill === 'half' ? round2(remaining / 2) : remaining);
-    elements.paymentError.textContent = '';
-  });
-});
+  showToast(`已一键补款 ${formatMoney(amount)}`, '撤销', () => {
+    records = records.map((item) => item.id === previous.id ? previous : item);
+    saveRecords();
+    render();
+    showToast('已撤销补款');
+  }, 4200);
+}
 
 function openSettings() {
-  elements.settingsCount.textContent = String(records.length);
+  elements.settingsCount.textContent = String(records.length + wishlist.length);
   elements.installButton.hidden = !deferredInstallPrompt;
   showDialog(elements.settingsDialog);
 }
 
-$('#addButton').addEventListener('click', () => openRecordDialog());
-$('#fab').addEventListener('click', () => openRecordDialog());
+$('#addButton').addEventListener('click', openCreateDialog);
+$('#fab').addEventListener('click', openCreateDialog);
 $('#settingsButton').addEventListener('click', openSettings);
 $('#footerSettings').addEventListener('click', openSettings);
 
@@ -835,7 +1197,7 @@ $$('[data-close-dialog]').forEach((button) => {
   button.addEventListener('click', () => closeDialog(document.getElementById(button.dataset.closeDialog)));
 });
 
-[elements.recordDialog, elements.paymentDialog, elements.settingsDialog].forEach((dialog) => {
+[elements.recordDialog, elements.wishlistDialog, elements.settingsDialog].forEach((dialog) => {
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) closeDialog(dialog);
   });
@@ -870,7 +1232,7 @@ document.addEventListener('keydown', (event) => {
   if (typing || document.body.classList.contains('modal-open')) return;
   if (event.key.toLowerCase() === 'n') {
     event.preventDefault();
-    openRecordDialog();
+    openCreateDialog();
   }
   if (event.key === '/') {
     event.preventDefault();
@@ -897,13 +1259,14 @@ function backupFilename(extension) {
 }
 
 $('#exportJsonButton').addEventListener('click', () => {
-  const usedImageIds = new Set(records.map((record) => record.imageId).filter(Boolean));
+  const usedImageIds = new Set([...records, ...wishlist].map((item) => item.imageId).filter(Boolean));
   const images = Array.from(imageCache.entries()).filter(([id]) => usedImageIds.has(id));
   const payload = {
     app: '模玩预定簿',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     records,
+    wishlist,
     images,
   };
   downloadBlob(backupFilename('json'), new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }));
@@ -915,12 +1278,11 @@ function csvCell(value) {
 }
 
 $('#exportCsvButton').addEventListener('click', () => {
-  const header = ['商品名称', '版本规格', '平台店铺', '订单号', '预定日期', '发售出货日', '补款截止日', '状态', '全款', '定金', '补款应付', '已补款', '剩余待付', '备注'];
+  const header = ['商品名称', '平台店铺', '发售月份', '状态', '全款', '定金', '补款应付', '已补款', '剩余待付', '备注'];
   const rows = records.map((record) => {
     const calc = calculate(record);
     return [
-      record.name, record.version, record.platform, record.orderNo, record.preorderDate,
-      record.releaseDate, record.paymentDeadline, record.status, calc.total, calc.deposit,
+      record.name, record.platform, record.releaseMonth, record.status, calc.total, calc.deposit,
       calc.due, calc.paidBalance, calc.remaining, record.note,
     ].map(csvCell).join(',');
   });
@@ -937,11 +1299,12 @@ elements.importFile.addEventListener('change', async () => {
   if (!file) return;
   try {
     const parsed = JSON.parse(await file.text());
-    const incomingRaw = Array.isArray(parsed) ? parsed : parsed.records;
-    if (!Array.isArray(incomingRaw)) throw new Error('文件里没有记录列表');
-    const incoming = incomingRaw.map(normalizeRecord).filter((record) => record.name);
-    if (!incoming.length) throw new Error('没有可导入的记录');
-    if (!window.confirm(`准备导入 ${incoming.length} 条记录。相同 ID 的记录会被更新，是否继续？`)) return;
+    const incomingRaw = Array.isArray(parsed) ? parsed : parsed.records || [];
+    const incoming = Array.isArray(incomingRaw) ? incomingRaw.map(normalizeRecord).filter((record) => record.name) : [];
+    const wishlistRaw = Array.isArray(parsed.wishlist) ? parsed.wishlist : [];
+    const incomingWishlist = wishlistRaw.map(normalizeWishlist).filter((item) => item.name);
+    if (!incoming.length && !incomingWishlist.length) throw new Error('没有可导入的记录');
+    if (!window.confirm(`准备导入 ${incoming.length} 条预定和 ${incomingWishlist.length} 个愿望。相同 ID 的内容会被更新，是否继续？`)) return;
     const imagesRaw = Array.isArray(parsed.images) ? parsed.images : [];
     for (const entry of imagesRaw) {
       if (!Array.isArray(entry) || entry.length < 2) continue;
@@ -950,13 +1313,17 @@ elements.importFile.addEventListener('change', async () => {
         await putCachedImage(id, dataUrl);
       }
     }
-    const map = new Map(records.map((record) => [record.id, record]));
-    incoming.forEach((record) => map.set(record.id, record));
-    records = Array.from(map.values());
-    if (!saveRecords()) return;
+    const recordMap = new Map(records.map((record) => [record.id, record]));
+    incoming.forEach((record) => recordMap.set(record.id, record));
+    records = Array.from(recordMap.values());
+    const wishMap = new Map(wishlist.map((item) => [item.id, item]));
+    incomingWishlist.forEach((item) => wishMap.set(item.id, item));
+    wishlist = Array.from(wishMap.values());
+    if (!saveRecords() || !saveWishlist()) return;
     await hydrateImageCache();
     render();
-    showToast(`已导入 ${incoming.length} 条记录`);
+    closeDialog(elements.settingsDialog);
+    showToast(`已导入 ${incoming.length} 条预定、${incomingWishlist.length} 个愿望`);
   } catch (error) {
     console.error(error);
     showToast('导入失败，请确认文件是完整备份 JSON');
@@ -964,18 +1331,20 @@ elements.importFile.addEventListener('change', async () => {
 });
 
 $('#clearDataButton').addEventListener('click', async () => {
-  if (!records.length) {
+  if (!records.length && !wishlist.length) {
     showToast('当前没有记录');
     return;
   }
-  if (!window.confirm(`确定清空全部 ${records.length} 条记录吗？此操作不可撤销，建议先导出备份。`)) return;
+  if (!window.confirm(`确定清空全部 ${records.length} 条预定和 ${wishlist.length} 个愿望吗？此操作不可撤销，建议先导出备份。`)) return;
   try { await clearCachedImages(); }
   catch (error) { console.warn('清空图片失败', error); }
   records = [];
+  wishlist = [];
   saveRecords();
+  saveWishlist();
   closeDialog(elements.settingsDialog);
   render();
-  showToast('全部记录已清空');
+  showToast('全部数据已清空');
 });
 
 window.addEventListener('beforeinstallprompt', (event) => {
@@ -1002,8 +1371,9 @@ window.addEventListener('appinstalled', () => {
 });
 
 window.addEventListener('storage', async (event) => {
-  if (event.key !== STORAGE_KEY) return;
+  if (![STORAGE_KEY, WISHLIST_KEY].includes(event.key)) return;
   records = loadRecords();
+  wishlist = loadWishlist();
   await hydrateImageCache();
   render();
 });
