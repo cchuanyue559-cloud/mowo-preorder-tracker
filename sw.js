@@ -1,5 +1,5 @@
 "use strict";
-const CACHE_NAME = "mowo-preorder-v2";
+const CACHE_NAME = "mowo-preorder-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -46,4 +46,5 @@ self.addEventListener("fetch", (event) => {
     }))
   );
 });
+
 

@@ -119,6 +119,23 @@
             <label class="field"><span>版本 / 规格</span><input id="version" name="version" maxlength="50" placeholder="初版、再版、特典版"></label>
             <label class="field"><span>平台 / 店铺</span><input id="platform" name="platform" list="platformOptions" maxlength="50" placeholder="万代官方旗舰店"><datalist id="platformOptions"><option value="万代官方微商城"></option><option value="万代官方旗舰店"></option><option value="闲鱼"></option><option value="其他"></option></datalist></label>
             <label class="field wide"><span>订单号</span><input id="orderNo" name="orderNo" maxlength="60" placeholder="可选"></label>
+            <div class="field wide">
+              <span>商品图片</span>
+              <div class="image-editor">
+                <div class="image-editor-preview" id="recordImagePreview">
+                  <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="6" width="22" height="20" rx="4"/><circle cx="12" cy="13" r="2.5"/><path d="m8 23 6-6 4 4 3-3 3 3"/></svg>
+                  <img id="recordImagePreviewImg" alt="商品图片预览" hidden>
+                </div>
+                <div class="image-editor-copy">
+                  <div class="image-editor-actions">
+                    <button class="btn btn-secondary btn-small" id="chooseImageButton" type="button">选择图片</button>
+                    <button class="text-button" id="removeImageButton" type="button" hidden>移除图片</button>
+                  </div>
+                  <p>支持相册或拍照，自动压缩后保存在本机。</p>
+                </div>
+              </div>
+              <input id="imageInput" type="file" accept="image/*" hidden>
+            </div>
           </div>
         </section>
 
@@ -187,7 +204,7 @@
         <div class="settings-summary">
           <div><span>当前记录</span><strong id="settingsCount">0</strong></div>
           <div><span>存储位置</span><strong>当前浏览器</strong></div>
-          <div><span>版本</span><strong>1.0</strong></div>
+          <div><span>版本</span><strong>1.1</strong></div>
         </div>
 
         <section class="settings-section">
@@ -198,7 +215,7 @@
 
         <section class="settings-section">
           <h3>数据备份</h3>
-          <p>数据默认只保存在当前浏览器。换设备或清理浏览器数据前，请先导出备份。</p>
+          <p>数据默认只保存在当前浏览器。换设备或清理浏览器数据前，请先导出备份。完整备份会包含商品图片；CSV 不包含图片。</p>
           <div class="settings-actions">
             <button class="btn btn-secondary" id="exportJsonButton" type="button">导出完整备份</button>
             <button class="btn btn-secondary" id="exportCsvButton" type="button">导出 CSV</button>
@@ -212,7 +229,7 @@
           <ul class="plain-list">
             <li>记录时把“定金”填成已经支付的金额；还没付就填 0。</li>
             <li>补款后直接用卡片上的“补款”按钮，不用重新填整条记录。</li>
-            <li>补款截止前 14 天会标红，发售前 30 天会标蓝。</li>
+            <li>补款截止前 14 天会标红，发售前 30 天会标蓝。商品图片会自动压缩，避免占用过多空间。</li>
           </ul>
         </section>
 
@@ -229,3 +246,5 @@
   <script src="./app.js" defer></script>
 </body>
 </html>
+
+

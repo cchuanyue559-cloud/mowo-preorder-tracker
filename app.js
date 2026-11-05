@@ -2,6 +2,9 @@
 
 const STORAGE_KEY = 'mowo-preorders-v1';
 const CHANNEL_NAME = 'mowo-preorders-updates';
+const MEDIA_DB_NAME = 'mowo-preorder-media';
+const MEDIA_STORE_NAME = 'images';
+const MAX_IMAGE_DIMENSION = 800;
 const DONE_STATUSES = new Set(['已到货', '已取消']);
 const STATUS_META = {
   '待付定金': { className: 'pending' },
@@ -38,6 +41,11 @@ const elements = {
   recordDialogTitle: $('#recordDialogTitle'),
   recordId: $('#recordId'),
   deleteRecordButton: $('#deleteRecordButton'),
+  imageInput: $('#imageInput'),
+  chooseImageButton: $('#chooseImageButton'),
+  removeImageButton: $('#removeImageButton'),
+  recordImagePreview: $('#recordImagePreview'),
+  recordImagePreviewImg: $('#recordImagePreviewImg'),
   paymentDialog: $('#paymentDialog'),
   paymentForm: $('#paymentForm'),
   paymentAmount: $('#paymentAmount'),
@@ -61,11 +69,17 @@ let nextEventId = null;
 let nextEventAction = 'edit';
 let deferredInstallPrompt = null;
 let channel = null;
+let imageCache = new Map();
+let mediaDbPromise = null;
+let pendingImageData = null;
+let pendingImageChanged = false;
+let pendingImageRemoved = false;
 
 try {
   channel = new BroadcastChannel(CHANNEL_NAME);
-  channel.addEventListener('message', () => {
+  channel.addEventListener('message', async () => {
     records = loadRecords();
+    await hydrateImageCache();
     render();
   });
 } catch (_) {
@@ -92,6 +106,7 @@ function normalizeRecord(raw = {}) {
     version: String(raw.version || '').trim().slice(0, 50),
     platform: String(raw.platform || '').trim().slice(0, 50),
     orderNo: String(raw.orderNo || '').trim().slice(0, 60),
+    imageId: String(raw.imageId || '').trim(),
     preorderDate: validDate(raw.preorderDate),
     releaseDate: validDate(raw.releaseDate),
     paymentDeadline: validDate(raw.paymentDeadline),
@@ -125,6 +140,118 @@ function saveRecords() {
     console.error('保存记录失败', error);
     showToast('保存失败，请检查浏览器存储空间');
     return false;
+  }
+}
+
+
+function openMediaDb() {
+  if (!('indexedDB' in window)) return Promise.reject(new Error('IndexedDB 不可用'));
+  if (!mediaDbPromise) {
+    mediaDbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(MEDIA_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+          request.result.createObjectStore(MEDIA_STORE_NAME);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  return mediaDbPromise;
+}
+
+async function putCachedImage(id, dataUrl) {
+  const db = await openMediaDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+    tx.objectStore(MEDIA_STORE_NAME).put(dataUrl, id);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  imageCache.set(id, dataUrl);
+}
+
+async function deleteCachedImage(id) {
+  if (!id) return;
+  const db = await openMediaDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+    tx.objectStore(MEDIA_STORE_NAME).delete(id);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  imageCache.delete(id);
+}
+
+async function getAllCachedImages() {
+  const db = await openMediaDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readonly');
+    const request = tx.objectStore(MEDIA_STORE_NAME).openCursor();
+    const entries = [];
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return resolve(entries);
+      entries.push([cursor.key, cursor.value]);
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function clearCachedImages() {
+  const db = await openMediaDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+    tx.objectStore(MEDIA_STORE_NAME).clear();
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  imageCache.clear();
+}
+
+async function hydrateImageCache() {
+  try {
+    imageCache = new Map(await getAllCachedImages());
+    const usedIds = new Set(records.map((record) => record.imageId).filter(Boolean));
+    for (const id of Array.from(imageCache.keys())) {
+      if (!usedIds.has(id)) {
+        imageCache.delete(id);
+        await deleteCachedImage(id);
+      }
+    }
+  } catch (error) {
+    console.warn('图片缓存读取失败', error);
+  }
+}
+
+async function compressImageFile(file) {
+  if (!file || !file.type.startsWith('image/')) throw new Error('请选择图片文件');
+  if (file.size > 25 * 1024 * 1024) throw new Error('图片不能超过 25MB');
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    if (image.decode) await image.decode();
+    else await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+    const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    let dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+    if (dataUrl.length > 320000) dataUrl = canvas.toDataURL('image/jpeg', 0.62);
+    if (dataUrl.length > 420000) throw new Error('图片压缩后仍然过大，请换一张图片');
+    return dataUrl;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
 }
 
@@ -344,14 +471,22 @@ function recordCardHTML(record) {
       : '';
   const canPay = calc.remaining > 0 && !calc.done;
   const note = record.note ? `<p class="card-note">${escapeHTML(record.note)}</p>` : '';
+  const imageUrl = record.imageId ? imageCache.get(record.imageId) : '';
+  const productBlock = `
+    <div class="card-product">
+      ${imageUrl ? `<img class="card-thumb" src="${escapeHTML(imageUrl)}" alt="${escapeHTML(record.name)} 商品图片" loading="lazy">` : ''}
+      <div class="card-title-wrap">
+        <h3 class="card-title">${escapeHTML(record.name)}</h3>
+        <p class="card-subtitle">${metaParts.length ? escapeHTML(metaParts.join(' · ')) : '还没有填写版本或店铺'}</p>
+      </div>
+    </div>`;
   return `
     <article class="record-card status-${status} ${calc.urgent ? 'is-urgent' : ''} ${calc.upcoming ? 'is-upcoming' : ''}">
       <div class="card-top">
         <span class="status-badge status-${status}">${escapeHTML(record.status)}</span>
         ${alert ? `<span class="card-alert ${calc.upcoming ? 'upcoming' : ''}">${escapeHTML(alert)}</span>` : ''}
       </div>
-      <h3 class="card-title">${escapeHTML(record.name)}</h3>
-      <p class="card-subtitle">${metaParts.length ? escapeHTML(metaParts.join(' · ')) : '还没有填写版本或店铺'}</p>
+      ${productBlock}
       <div class="card-events">
         <div class="event-block"><span>补款截止</span>${eventDateHTML(record.paymentDeadline, calc.deadlineDays, true)}</div>
         <div class="event-block"><span>发售 / 出货</span>${eventDateHTML(record.releaseDate, calc.releaseDays, false)}</div>
@@ -457,6 +592,10 @@ function updateModalBodyState() {
 
 function openRecordDialog(record = null) {
   editingId = record?.id || null;
+  pendingImageData = null;
+  pendingImageChanged = false;
+  pendingImageRemoved = false;
+  elements.imageInput.value = '';
   elements.recordForm.reset();
   elements.recordId.value = record?.id || '';
   elements.recordDialogTitle.textContent = record ? '编辑预定' : '新增预定';
@@ -475,9 +614,56 @@ function openRecordDialog(record = null) {
   $('#note').value = record?.note || '';
   $('#formError').textContent = '';
   updateFormCalc();
+  renderRecordImagePreview();
   showDialog(elements.recordDialog);
   window.setTimeout(() => $('#name').focus(), 80);
 }
+
+function renderRecordImagePreview() {
+  let src = '';
+  if (!pendingImageRemoved) {
+    if (pendingImageData) src = pendingImageData;
+    else if (editingId) {
+      const record = records.find((item) => item.id === editingId);
+      src = record?.imageId ? imageCache.get(record.imageId) || '' : '';
+    }
+  }
+  const hasImage = Boolean(src);
+  elements.recordImagePreview.classList.toggle('has-image', hasImage);
+  elements.recordImagePreviewImg.hidden = !hasImage;
+  if (hasImage) elements.recordImagePreviewImg.src = src;
+  else elements.recordImagePreviewImg.removeAttribute('src');
+  elements.removeImageButton.hidden = !hasImage;
+}
+
+elements.chooseImageButton.addEventListener('click', () => elements.imageInput.click());
+elements.removeImageButton.addEventListener('click', () => {
+  pendingImageData = null;
+  pendingImageChanged = true;
+  pendingImageRemoved = true;
+  renderRecordImagePreview();
+});
+elements.imageInput.addEventListener('change', async () => {
+  const file = elements.imageInput.files?.[0];
+  if (!file) return;
+  const originalText = elements.chooseImageButton.textContent;
+  elements.chooseImageButton.disabled = true;
+  elements.chooseImageButton.textContent = '处理中…';
+  $('#formError').textContent = '';
+  try {
+    pendingImageData = await compressImageFile(file);
+    pendingImageChanged = true;
+    pendingImageRemoved = false;
+    renderRecordImagePreview();
+  } catch (error) {
+    console.error(error);
+    $('#formError').textContent = error.message || '图片处理失败，请换一张图片。';
+  } finally {
+    elements.imageInput.value = '';
+    elements.chooseImageButton.disabled = false;
+    elements.chooseImageButton.textContent = originalText;
+  }
+});
 
 function updateFormCalc() {
   const total = numberValue($('#total').value);
@@ -503,7 +689,7 @@ function validateRecordForm() {
   return '';
 }
 
-elements.recordForm.addEventListener('submit', (event) => {
+elements.recordForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const error = validateRecordForm();
   if (error) {
@@ -512,12 +698,29 @@ elements.recordForm.addEventListener('submit', (event) => {
   }
   const existing = editingId ? records.find((record) => record.id === editingId) : null;
   const now = new Date().toISOString();
+  let imageId = existing?.imageId || '';
+  try {
+    if (pendingImageChanged) {
+      if (pendingImageRemoved || !pendingImageData) {
+        if (imageId) await deleteCachedImage(imageId);
+        imageId = '';
+      } else {
+        if (!imageId) imageId = `img-${makeId()}`;
+        await putCachedImage(imageId, pendingImageData);
+      }
+    }
+  } catch (storageError) {
+    console.error(storageError);
+    $('#formError').textContent = '图片保存失败，请检查浏览器存储空间。';
+    return;
+  }
   const record = normalizeRecord({
     id: existing?.id || makeId(),
     name: $('#name').value,
     version: $('#version').value,
     platform: $('#platform').value,
     orderNo: $('#orderNo').value,
+    imageId,
     preorderDate: $('#preorderDate').value,
     releaseDate: $('#releaseDate').value,
     paymentDeadline: $('#paymentDeadline').value,
@@ -540,11 +743,15 @@ elements.recordForm.addEventListener('submit', (event) => {
   showToast(existing ? '预定已更新' : '预定已添加');
 });
 
-elements.deleteRecordButton.addEventListener('click', () => {
+elements.deleteRecordButton.addEventListener('click', async () => {
   if (!editingId) return;
   const record = records.find((item) => item.id === editingId);
   if (!record) return;
   if (!window.confirm(`确定删除“${record.name}”吗？此操作不可撤销。`)) return;
+  if (record.imageId) {
+    try { await deleteCachedImage(record.imageId); }
+    catch (error) { console.warn('删除图片失败', error); }
+  }
   records = records.filter((item) => item.id !== editingId);
   saveRecords();
   closeDialog(elements.recordDialog);
@@ -690,11 +897,14 @@ function backupFilename(extension) {
 }
 
 $('#exportJsonButton').addEventListener('click', () => {
+  const usedImageIds = new Set(records.map((record) => record.imageId).filter(Boolean));
+  const images = Array.from(imageCache.entries()).filter(([id]) => usedImageIds.has(id));
   const payload = {
     app: '模玩预定簿',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     records,
+    images,
   };
   downloadBlob(backupFilename('json'), new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }));
   showToast('完整备份已导出');
@@ -732,10 +942,19 @@ elements.importFile.addEventListener('change', async () => {
     const incoming = incomingRaw.map(normalizeRecord).filter((record) => record.name);
     if (!incoming.length) throw new Error('没有可导入的记录');
     if (!window.confirm(`准备导入 ${incoming.length} 条记录。相同 ID 的记录会被更新，是否继续？`)) return;
+    const imagesRaw = Array.isArray(parsed.images) ? parsed.images : [];
+    for (const entry of imagesRaw) {
+      if (!Array.isArray(entry) || entry.length < 2) continue;
+      const [id, dataUrl] = entry;
+      if (typeof id === 'string' && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+        await putCachedImage(id, dataUrl);
+      }
+    }
     const map = new Map(records.map((record) => [record.id, record]));
     incoming.forEach((record) => map.set(record.id, record));
     records = Array.from(map.values());
     if (!saveRecords()) return;
+    await hydrateImageCache();
     render();
     showToast(`已导入 ${incoming.length} 条记录`);
   } catch (error) {
@@ -744,12 +963,14 @@ elements.importFile.addEventListener('change', async () => {
   }
 });
 
-$('#clearDataButton').addEventListener('click', () => {
+$('#clearDataButton').addEventListener('click', async () => {
   if (!records.length) {
     showToast('当前没有记录');
     return;
   }
   if (!window.confirm(`确定清空全部 ${records.length} 条记录吗？此操作不可撤销，建议先导出备份。`)) return;
+  try { await clearCachedImages(); }
+  catch (error) { console.warn('清空图片失败', error); }
   records = [];
   saveRecords();
   closeDialog(elements.settingsDialog);
@@ -780,9 +1001,10 @@ window.addEventListener('appinstalled', () => {
   showToast('已安装到主屏幕');
 });
 
-window.addEventListener('storage', (event) => {
+window.addEventListener('storage', async (event) => {
   if (event.key !== STORAGE_KEY) return;
   records = loadRecords();
+  await hydrateImageCache();
   render();
 });
 
@@ -799,4 +1021,9 @@ if (navigator.storage?.persist) {
   navigator.storage.persist().catch(() => {});
 }
 
-render();
+async function initApp() {
+  await hydrateImageCache();
+  render();
+}
+
+initApp();
