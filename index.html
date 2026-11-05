@@ -105,7 +105,7 @@
           <div>
             <span class="eyebrow">愿望单</span>
             <h1>想买，但先记下来。</h1>
-            <p>记录想入手的模型、目标价格和发售月份。遇到好价时，再决定是否预定。</p>
+            <p>记录想入手的模型和价格变化。最近价格、历史最低和发售价格都会集中显示。</p>
             <button class="btn btn-primary" id="wishlistHeroAdd" type="button">＋ 添加愿望</button>
           </div>
           <div class="wishlist-hero-mark" aria-hidden="true">
@@ -113,27 +113,28 @@
           </div>
         </section>
         <section class="stats-grid" aria-label="愿望单统计">
-          <article class="stat-card"><span class="stat-label">未购愿望</span><strong class="stat-value" id="wishlistStatActive">0</strong><span class="stat-hint">观望中与等待好价</span></article>
+          <article class="stat-card"><span class="stat-label">愿望数量</span><strong class="stat-value" id="wishlistStatTotal">0</strong><span class="stat-hint">当前愿望单条目</span></article>
           <article class="stat-card stat-amber"><span class="stat-label">必买</span><strong class="stat-value" id="wishlistStatMust">0</strong><span class="stat-hint">优先关注的愿望</span></article>
-          <article class="stat-card stat-green"><span class="stat-label">已购</span><strong class="stat-value" id="wishlistStatBought">0</strong><span class="stat-hint">已经从愿望单毕业</span></article>
+          <article class="stat-card stat-green"><span class="stat-label">价格记录</span><strong class="stat-value" id="wishlistStatPrices">0</strong><span class="stat-hint">累计添加的历史价格</span></article>
         </section>
         <section class="toolbar" aria-label="愿望单筛选与排序">
           <div class="filter-tabs" id="wishlistFilters" role="tablist" aria-label="愿望筛选">
             <button class="filter-tab active" type="button" data-wishlist-filter="all" role="tab" aria-selected="true">全部</button>
-            <button class="filter-tab" type="button" data-wishlist-filter="active" role="tab" aria-selected="false">未购</button>
-            <button class="filter-tab" type="button" data-wishlist-filter="done" role="tab" aria-selected="false">已购 / 已放弃</button>
+            <button class="filter-tab" type="button" data-wishlist-filter="must" role="tab" aria-selected="false">必买</button>
+            <button class="filter-tab" type="button" data-wishlist-filter="high" role="tab" aria-selected="false">优先</button>
           </div>
           <div class="toolbar-controls">
             <label class="search-box">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.2 4.2"/></svg>
-              <input id="wishlistSearchInput" type="search" placeholder="搜愿望商品 / 店铺" autocomplete="off">
+              <input id="wishlistSearchInput" type="search" placeholder="搜愿望商品" autocomplete="off">
             </label>
             <label class="select-wrap">
               <span class="sr-only">愿望排序方式</span>
               <select id="wishlistSortSelect">
                 <option value="smart">智能排序</option>
-                <option value="release">按发售月份</option>
-                <option value="price">按目标价格</option>
+                <option value="latest">按最近价格</option>
+                <option value="low">按历史最低</option>
+                <option value="releasePrice">按发售价格</option>
                 <option value="created">按添加时间</option>
               </select>
             </label>
@@ -141,7 +142,7 @@
         </section>
         <div class="list-heading">
           <div><strong id="wishlistListTitle">全部愿望</strong><span id="wishlistListCount">0 个</span></div>
-          <span class="list-note">“标记已购”可快速归档</span>
+          <span class="list-note">记录价格后自动更新最近价和历史低</span>
         </div>
         <section class="records-grid" id="wishlistGrid" aria-live="polite"></section>
       </section>
@@ -153,6 +154,7 @@
     </footer>
   </div>
   <button class="fab" id="fab" type="button" aria-label="新增预定">＋</button>
+  <button class="back-to-top" id="backToTop" type="button" aria-label="回到顶部" hidden>↑</button>
 
   <dialog class="sheet" id="recordDialog" aria-labelledby="recordDialogTitle">
     <form method="dialog" class="sheet-surface" id="recordForm">
@@ -239,11 +241,8 @@
           <h3>愿望信息</h3>
           <div class="form-grid">
             <label class="field wide"><span>商品名称 <b>*</b></span><input id="wishlistName" maxlength="80" required placeholder="例如：METAL BUILD 命运高达"></label>
-            <label class="field"><span>平台 / 店铺</span><input id="wishlistPlatform" list="platformOptions" maxlength="50" placeholder="万代官方旗舰店"></label>
-            <label class="field"><span>发售月份</span><input id="wishlistReleaseMonth" type="month"></label>
-            <label class="field"><span>目标价格</span><div class="money-input"><span>¥</span><input id="wishlistTargetPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></div></label>
+            <label class="field"><span>发售价格</span><div class="money-input"><span>¥</span><input id="wishlistReleasePrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="官方定价"></div></label>
             <label class="field"><span>优先程度</span><select id="wishlistPriority"><option value="普通">普通</option><option value="优先">优先</option><option value="必买">必买</option></select></label>
-            <label class="field"><span>状态</span><select id="wishlistStatus"><option value="观望中">观望中</option><option value="等待好价">等待好价</option><option value="已购">已购</option><option value="已放弃">已放弃</option></select></label>
             <div class="field wide">
               <span>商品图片</span>
               <div class="image-editor">
@@ -265,7 +264,7 @@
         </section>
         <section class="form-section">
           <h3>备注</h3>
-          <label class="field"><span>备注</span><textarea id="wishlistNote" rows="3" maxlength="300" placeholder="好价目标、版本偏好、购买渠道等"></textarea></label>
+          <label class="field"><span>备注</span><textarea id="wishlistNote" rows="3" maxlength="300" placeholder="版本偏好、购买渠道、价格备注等"></textarea></label>
         </section>
         <p class="form-error" id="wishlistFormError" role="alert"></p>
       </div>
@@ -276,6 +275,36 @@
         <button class="btn btn-primary" type="submit">保存愿望</button>
       </div>
     </form>
+  </dialog>
+
+
+  <dialog class="sheet sheet-small" id="priceDialog" aria-labelledby="priceDialogTitle">
+    <div class="sheet-surface">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <div><span class="eyebrow">价格历史</span><h2 id="priceDialogTitle">记录愿望价格</h2></div>
+        <button class="icon-button" type="button" data-close-dialog="priceDialog" aria-label="关闭">×</button>
+      </div>
+      <div class="price-dialog-body">
+        <div class="price-dialog-name"><strong id="priceDialogName">商品</strong><span>添加实际看到的价格，卡片会自动计算最近价和历史最低。</span></div>
+        <div class="price-summary-grid">
+          <div><span>最近价格</span><strong id="priceLatest">—</strong></div>
+          <div><span>历史最低</span><strong id="priceLow">—</strong></div>
+          <div><span>发售价格</span><strong id="priceRelease">—</strong></div>
+        </div>
+        <form id="priceForm" class="price-form">
+          <input type="hidden" id="priceWishlistId">
+          <div class="form-grid">
+            <label class="field"><span>价格 <b>*</b></span><div class="money-input"><span>¥</span><input id="priceAmount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="0"></div></label>
+            <label class="field"><span>看到价格的日期</span><input id="priceDate" type="date"></label>
+            <label class="field wide"><span>价格备注</span><input id="priceNote" maxlength="100" placeholder="例如：闲鱼包邮 / 旗舰店补货"></label>
+          </div>
+          <button class="btn btn-primary full-width" type="submit">＋ 添加价格记录</button>
+        </form>
+        <div class="price-history-heading"><strong>价格历史</strong><span id="priceHistoryCount"></span></div>
+        <div class="price-history-list" id="priceHistoryList"></div>
+      </div>
+    </div>
   </dialog>
 
   <dialog class="sheet sheet-small" id="settingsDialog" aria-labelledby="settingsDialogTitle">
@@ -289,7 +318,7 @@
         <div class="settings-summary">
           <div><span>当前条目</span><strong id="settingsCount">0</strong></div>
           <div><span>存储位置</span><strong>当前浏览器</strong></div>
-          <div><span>版本</span><strong>2.0</strong></div>
+          <div><span>版本</span><strong>2.1</strong></div>
         </div>
 
         <section class="settings-section">

@@ -54,9 +54,9 @@ const elements = {
   removeImageButton: $('#removeImageButton'),
   recordImagePreview: $('#recordImagePreview'),
   recordImagePreviewImg: $('#recordImagePreviewImg'),
-  wishlistStatActive: $('#wishlistStatActive'),
+  wishlistStatTotal: $('#wishlistStatTotal'),
   wishlistStatMust: $('#wishlistStatMust'),
-  wishlistStatBought: $('#wishlistStatBought'),
+  wishlistStatPrices: $('#wishlistStatPrices'),
   wishlistSearchInput: $('#wishlistSearchInput'),
   wishlistSortSelect: $('#wishlistSortSelect'),
   wishlistListTitle: $('#wishlistListTitle'),
@@ -72,6 +72,19 @@ const elements = {
   wishlistImagePreview: $('#wishlistImagePreview'),
   wishlistImagePreviewImg: $('#wishlistImagePreviewImg'),
   wishlistFormError: $('#wishlistFormError'),
+  priceDialog: $('#priceDialog'),
+  priceDialogName: $('#priceDialogName'),
+  priceLatest: $('#priceLatest'),
+  priceLow: $('#priceLow'),
+  priceRelease: $('#priceRelease'),
+  priceForm: $('#priceForm'),
+  priceWishlistId: $('#priceWishlistId'),
+  priceAmount: $('#priceAmount'),
+  priceDate: $('#priceDate'),
+  priceNote: $('#priceNote'),
+  priceHistoryCount: $('#priceHistoryCount'),
+  priceHistoryList: $('#priceHistoryList'),
+  backToTop: $('#backToTop'),
   settingsDialog: $('#settingsDialog'),
   settingsCount: $('#settingsCount'),
   importFile: $('#importFile'),
@@ -90,6 +103,7 @@ let wishlistSort = 'smart';
 let wishlistQuery = '';
 let editingId = null;
 let editingWishlistId = null;
+let priceWishlistId = null;
 let nextEventId = null;
 let deferredInstallPrompt = null;
 let channel = null;
@@ -160,20 +174,35 @@ function normalizeWishlist(raw = {}) {
     const text = String(value || '').slice(0, 7);
     return /^\d{4}-\d{2}$/.test(text) ? text : '';
   };
+  const validDate = (value) => {
+    const text = String(value || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+  };
   const allowedPriority = ['普通', '优先', '必买'];
   const allowedStatus = ['观望中', '等待好价', '已购', '已放弃'];
+  const priceHistory = Array.isArray(raw.priceHistory)
+    ? raw.priceHistory.map((entry, index) => ({
+        id: String(entry.id || `price-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`),
+        price: numberValue(entry.price),
+        date: validDate(entry.date),
+        note: String(entry.note || '').trim().slice(0, 100),
+        createdAt: entry.createdAt || now,
+      })).filter((entry) => entry.price > 0).slice(-200)
+    : [];
   return {
     id: String(raw.id || makeId()),
     name: String(raw.name || '').trim().slice(0, 80),
-    platform: String(raw.platform || '').trim().slice(0, 50),
     imageId: String(raw.imageId || '').trim(),
-    releaseMonth: validMonth(raw.releaseMonth),
-    targetPrice: numberValue(raw.targetPrice),
     priority: allowedPriority.includes(raw.priority) ? raw.priority : '普通',
-    status: allowedStatus.includes(raw.status) ? raw.status : '观望中',
+    releasePrice: numberValue(raw.releasePrice),
+    priceHistory,
     note: String(raw.note || '').trim().slice(0, 300),
     createdAt: raw.createdAt || now,
     updatedAt: raw.updatedAt || now,
+    platform: String(raw.platform || '').trim().slice(0, 50),
+    releaseMonth: validMonth(raw.releaseMonth),
+    targetPrice: numberValue(raw.targetPrice),
+    status: allowedStatus.includes(raw.status) ? raw.status : '',
   };
 }
 
@@ -638,66 +667,73 @@ function renderRecords() {
   elements.recordsGrid.innerHTML = list.length ? list.map(recordCardHTML).join('') : emptyStateHTML();
 }
 
-function wishlistStatusClass(status) {
-  return { '观望中': 'pending', '等待好价': 'paid', '已购': 'arrived', '已放弃': 'cancelled' }[status] || 'pending';
-}
-
 function wishlistPriorityClass(priority) {
   return { '普通': 'priority-normal', '优先': 'priority-high', '必买': 'priority-must' }[priority] || 'priority-normal';
+}
+
+function getPriceStats(item) {
+  const history = (item.priceHistory || []).slice().sort((a, b) => {
+    const dateDiff = String(b.date || '').localeCompare(String(a.date || ''));
+    if (dateDiff) return dateDiff;
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
+  const latestEntry = history[0] || null;
+  const lowEntry = history.reduce((low, entry) => (!low || entry.price < low.price ? entry : low), null);
+  return { history, latestEntry, latestPrice: latestEntry?.price || 0, lowPrice: lowEntry?.price || 0, releasePrice: numberValue(item.releasePrice) };
 }
 
 function getFilteredWishlist() {
   const query = wishlistQuery.trim().toLowerCase();
   let list = wishlist.filter((item) => {
     if (query) {
-      const haystack = [item.name, item.platform, item.note].join(' ').toLowerCase();
+      const haystack = [item.name, item.note].join(' ').toLowerCase();
       if (!haystack.includes(query)) return false;
     }
-    const done = ['已购', '已放弃'].includes(item.status);
-    if (wishlistFilter === 'active') return !done;
-    if (wishlistFilter === 'done') return done;
+    if (wishlistFilter === 'must') return item.priority === '必买';
+    if (wishlistFilter === 'high') return item.priority === '优先';
     return true;
   });
-  const monthValue = (value) => value || '9999-12';
   const priorityRank = (priority) => ({ '必买': 0, '优先': 1, '普通': 2 }[priority] ?? 2);
   list = list.slice().sort((a, b) => {
-    if (wishlistSort === 'release') return monthValue(a.releaseMonth).localeCompare(monthValue(b.releaseMonth));
-    if (wishlistSort === 'price') return numberValue(b.targetPrice) - numberValue(a.targetPrice);
+    const aStats = getPriceStats(a);
+    const bStats = getPriceStats(b);
+    if (wishlistSort === 'latest') return (bStats.latestPrice || 0) - (aStats.latestPrice || 0);
+    if (wishlistSort === 'low') return (bStats.lowPrice || 0) - (aStats.lowPrice || 0);
+    if (wishlistSort === 'releasePrice') return (bStats.releasePrice || 0) - (aStats.releasePrice || 0);
     if (wishlistSort === 'created') return String(b.createdAt).localeCompare(String(a.createdAt));
-    const doneDiff = Number(['已购', '已放弃'].includes(a.status)) - Number(['已购', '已放弃'].includes(b.status));
-    if (doneDiff) return doneDiff;
     const priorityDiff = priorityRank(a.priority) - priorityRank(b.priority);
     if (priorityDiff) return priorityDiff;
-    return monthValue(a.releaseMonth).localeCompare(monthValue(b.releaseMonth));
+    return String(b.updatedAt).localeCompare(String(a.updatedAt));
   });
   return list;
 }
 
 function wishlistCardHTML(item) {
-  const status = wishlistStatusClass(item.status);
+  const stats = getPriceStats(item);
   const imageUrl = item.imageId ? imageCache.get(item.imageId) : '';
   const note = item.note ? `<p class="card-note">${escapeHTML(item.note)}</p>` : '';
-  const done = ['已购', '已放弃'].includes(item.status);
+  const priceCount = item.priceHistory?.length || 0;
   return `
-    <article class="record-card wishlist-card status-${status}">
+    <article class="record-card wishlist-card">
       <div class="card-top">
         <span class="wishlist-priority ${wishlistPriorityClass(item.priority)}">${escapeHTML(item.priority)}</span>
-        <span class="status-badge status-${status}">${escapeHTML(item.status)}</span>
+        <span class="price-count-badge">${priceCount ? `${priceCount} 次价格` : '暂无价格'}</span>
       </div>
       <div class="card-product">
         ${imageUrl ? `<img class="card-thumb" src="${escapeHTML(imageUrl)}" alt="${escapeHTML(item.name)} 愿望图片" loading="lazy">` : ''}
         <div class="card-title-wrap">
           <h3 class="card-title">${escapeHTML(item.name)}</h3>
-          <p class="card-subtitle">${escapeHTML(item.platform || '还没有填写平台或店铺')}</p>
+          <p class="card-subtitle">价格跟踪清单</p>
         </div>
       </div>
-      <div class="card-events">
-        <div class="event-block"><span>目标价格</span><strong>${item.targetPrice > 0 ? formatMoney(item.targetPrice) : '未设置'}</strong></div>
-        <div class="event-block"><span>发售月份</span><strong>${formatMonth(item.releaseMonth)}</strong></div>
+      <div class="price-stats-grid">
+        <div class="price-stat"><span>最近价格</span><strong>${stats.latestPrice ? formatMoney(stats.latestPrice) : '—'}</strong></div>
+        <div class="price-stat low"><span>历史最低</span><strong>${stats.lowPrice ? formatMoney(stats.lowPrice) : '—'}</strong></div>
+        <div class="price-stat release"><span>发售价格</span><strong>${stats.releasePrice ? formatMoney(stats.releasePrice) : '—'}</strong></div>
       </div>
       ${note}
       <div class="card-actions">
-        ${!done ? `<button class="btn btn-primary" type="button" data-action="wishlist-buy" data-id="${escapeHTML(item.id)}">标记已购</button>` : ''}
+        <button class="btn btn-primary" type="button" data-action="wishlist-price" data-id="${escapeHTML(item.id)}">记录价格</button>
         <button class="btn btn-ghost btn-edit" type="button" data-action="wishlist-edit" data-id="${escapeHTML(item.id)}">编辑</button>
       </div>
     </article>`;
@@ -709,7 +745,7 @@ function wishlistEmptyHTML() {
       <div class="empty-state wishlist-empty">
         <div class="empty-icon"><svg viewBox="0 0 48 48"><path d="M24 40S8 31 8 19a9 9 0 0 1 16-5 9 9 0 0 1 16 5c0 12-16 21-16 21Z"/></svg></div>
         <h3>愿望单还是空的</h3>
-        <p>把想买的模型先记下来，标上目标价格和发售月份。</p>
+        <p>把想买的模型记下来，之后随时添加看到的价格。</p>
         <div class="empty-actions"><button class="btn btn-primary" type="button" data-action="wishlist-add">添加第一个愿望</button></div>
       </div>`;
   }
@@ -717,12 +753,13 @@ function wishlistEmptyHTML() {
 }
 
 function renderWishlist() {
-  const active = wishlist.filter((item) => !['已购', '已放弃'].includes(item.status));
-  elements.wishlistStatActive.textContent = String(active.length);
-  elements.wishlistStatMust.textContent = String(active.filter((item) => item.priority === '必买').length);
-  elements.wishlistStatBought.textContent = String(wishlist.filter((item) => item.status === '已购').length);
+  const mustCount = wishlist.filter((item) => item.priority === '必买').length;
+  const priceCount = wishlist.reduce((sum, item) => sum + (item.priceHistory?.length || 0), 0);
+  elements.wishlistStatTotal.textContent = String(wishlist.length);
+  elements.wishlistStatMust.textContent = String(mustCount);
+  elements.wishlistStatPrices.textContent = String(priceCount);
   const list = getFilteredWishlist();
-  const titleMap = { all: '全部愿望', active: '未购愿望', done: '已购 / 已放弃' };
+  const titleMap = { all: '全部愿望', must: '必买愿望', high: '优先愿望' };
   elements.wishlistListTitle.textContent = titleMap[wishlistFilter] || '全部愿望';
   elements.wishlistListCount.textContent = `${list.length} 个`;
   elements.wishlistGrid.innerHTML = list.length ? list.map(wishlistCardHTML).join('') : wishlistEmptyHTML();
@@ -748,18 +785,7 @@ elements.wishlistGrid.addEventListener('click', (event) => {
   const item = wishlist.find((entry) => entry.id === id);
   if (!item) return;
   if (action === 'wishlist-edit') return openWishlistDialog(item);
-  if (action === 'wishlist-buy') {
-    const previous = { ...item };
-    wishlist = wishlist.map((entry) => entry.id === id ? { ...entry, status: '已购', updatedAt: new Date().toISOString() } : entry);
-    saveWishlist();
-    render();
-    showToast('已标记为已购', '撤销', () => {
-      wishlist = wishlist.map((entry) => entry.id === previous.id ? previous : entry);
-      saveWishlist();
-      render();
-      showToast('已撤销标记');
-    }, 3200);
-  }
+  if (action === 'wishlist-price') return openPriceDialog(id);
 });
 
 elements.recordsGrid.addEventListener('click', (event) => {
@@ -809,7 +835,7 @@ function closeDialog(dialog) {
 }
 
 function updateModalBodyState() {
-  const anyOpen = [elements.recordDialog, elements.wishlistDialog, elements.settingsDialog].some((dialog) => dialog.open);
+  const anyOpen = [elements.recordDialog, elements.wishlistDialog, elements.priceDialog, elements.settingsDialog].some((dialog) => dialog.open);
   document.body.classList.toggle('modal-open', anyOpen);
 }
 
@@ -1008,11 +1034,8 @@ function openWishlistDialog(item = null) {
   elements.wishlistDialogTitle.textContent = item ? '编辑愿望' : '添加愿望';
   elements.deleteWishlistButton.hidden = !item;
   $('#wishlistName').value = item?.name || '';
-  $('#wishlistPlatform').value = item?.platform || '';
-  $('#wishlistReleaseMonth').value = item?.releaseMonth || '';
-  $('#wishlistTargetPrice').value = item?.targetPrice ? String(item.targetPrice) : '';
+  $('#wishlistReleasePrice').value = item?.releasePrice ? String(item.releasePrice) : '';
   $('#wishlistPriority').value = item?.priority || '普通';
-  $('#wishlistStatus').value = item?.status || '观望中';
   $('#wishlistNote').value = item?.note || '';
   elements.wishlistFormError.textContent = '';
   renderWishlistImagePreview();
@@ -1077,15 +1100,17 @@ elements.wishlistForm.addEventListener('submit', async (event) => {
   const item = normalizeWishlist({
     id: existing?.id || makeId(),
     name,
-    platform: $('#wishlistPlatform').value,
     imageId,
-    releaseMonth: $('#wishlistReleaseMonth').value,
-    targetPrice: numberValue($('#wishlistTargetPrice').value),
     priority: $('#wishlistPriority').value,
-    status: $('#wishlistStatus').value,
+    releasePrice: numberValue($('#wishlistReleasePrice').value),
+    priceHistory: existing?.priceHistory || [],
     note: $('#wishlistNote').value,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
+    platform: existing?.platform || '',
+    releaseMonth: existing?.releaseMonth || '',
+    targetPrice: existing?.targetPrice || 0,
+    status: existing?.status || '',
   });
   wishlist = existing ? wishlist.map((entry) => entry.id === existing.id ? item : entry) : [item, ...wishlist];
   if (!saveWishlist()) return;
@@ -1108,6 +1133,79 @@ elements.deleteWishlistButton.addEventListener('click', async () => {
   closeDialog(elements.wishlistDialog);
   render();
   showToast('愿望已删除');
+});
+
+function openPriceDialog(itemId) {
+  const item = wishlist.find((entry) => entry.id === itemId);
+  if (!item) return;
+  priceWishlistId = itemId;
+  elements.priceDialogName.textContent = item.name;
+  elements.priceAmount.value = '';
+  elements.priceDate.value = todayISO();
+  elements.priceNote.value = '';
+  renderPriceDialog();
+  showDialog(elements.priceDialog);
+  window.setTimeout(() => elements.priceAmount.focus(), 80);
+}
+
+function renderPriceDialog() {
+  const item = wishlist.find((entry) => entry.id === priceWishlistId);
+  if (!item) return;
+  const stats = getPriceStats(item);
+  elements.priceLatest.textContent = stats.latestPrice ? formatMoney(stats.latestPrice) : '—';
+  elements.priceLow.textContent = stats.lowPrice ? formatMoney(stats.lowPrice) : '—';
+  elements.priceRelease.textContent = stats.releasePrice ? formatMoney(stats.releasePrice) : '—';
+  elements.priceHistoryCount.textContent = `${stats.history.length} 条记录`;
+  elements.priceHistoryList.innerHTML = stats.history.length
+    ? stats.history.map((entry) => `
+        <div class="price-history-item">
+          <div class="price-history-main">
+            <strong>${formatMoney(entry.price)}</strong>
+            <span>${escapeHTML(entry.date || '日期未填')}${entry.note ? ` · ${escapeHTML(entry.note)}` : ''}</span>
+          </div>
+          <button class="price-history-delete" type="button" data-price-delete="${escapeHTML(entry.id)}" aria-label="删除这条价格记录">×</button>
+        </div>`).join('')
+    : '<div class="price-history-empty">还没有价格记录，添加第一次看到的价格吧。</div>';
+}
+
+elements.priceForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const item = wishlist.find((entry) => entry.id === priceWishlistId);
+  if (!item) return;
+  const price = numberValue(elements.priceAmount.value);
+  if (price <= 0) {
+    showToast('请输入大于 0 的价格');
+    return;
+  }
+  const entry = {
+    id: `price-${makeId()}`,
+    price,
+    date: elements.priceDate.value || todayISO(),
+    note: elements.priceNote.value.trim().slice(0, 100),
+    createdAt: new Date().toISOString(),
+  };
+  const updated = { ...item, priceHistory: [...(item.priceHistory || []), entry], updatedAt: new Date().toISOString() };
+  wishlist = wishlist.map((wishItem) => wishItem.id === item.id ? updated : wishItem);
+  if (!saveWishlist()) return;
+  elements.priceAmount.value = '';
+  elements.priceNote.value = '';
+  render();
+  renderPriceDialog();
+  showToast(`已记录价格 ${formatMoney(price)}`);
+});
+
+elements.priceHistoryList.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-price-delete]');
+  if (!button) return;
+  const item = wishlist.find((entry) => entry.id === priceWishlistId);
+  if (!item) return;
+  if (!window.confirm('确定删除这条价格记录吗？')) return;
+  const updated = { ...item, priceHistory: (item.priceHistory || []).filter((entry) => entry.id !== button.dataset.priceDelete), updatedAt: new Date().toISOString() };
+  wishlist = wishlist.map((wishItem) => wishItem.id === item.id ? updated : wishItem);
+  saveWishlist();
+  render();
+  renderPriceDialog();
+  showToast('价格记录已删除');
 });
 
 function switchView(view) {
@@ -1197,7 +1295,7 @@ $$('[data-close-dialog]').forEach((button) => {
   button.addEventListener('click', () => closeDialog(document.getElementById(button.dataset.closeDialog)));
 });
 
-[elements.recordDialog, elements.wishlistDialog, elements.settingsDialog].forEach((dialog) => {
+[elements.recordDialog, elements.wishlistDialog, elements.priceDialog, elements.settingsDialog].forEach((dialog) => {
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) closeDialog(dialog);
   });
@@ -1391,9 +1489,18 @@ if (navigator.storage?.persist) {
   navigator.storage.persist().catch(() => {});
 }
 
+function updateBackToTop() {
+  elements.backToTop.hidden = window.scrollY < 480;
+}
+
+window.addEventListener('scroll', updateBackToTop, { passive: true });
+elements.backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
 async function initApp() {
   await hydrateImageCache();
   render();
+  updateBackToTop();
 }
 
 initApp();
+

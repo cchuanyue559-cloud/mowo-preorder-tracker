@@ -1,7 +1,7 @@
 {
   "name": "模玩预定簿",
   "short_name": "预定簿",
-  "description": "记录模玩预定、愿望单、定金、补款和发售月份。",
+  "description": "记录模玩预定、愿望单、历史价格和补款。",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
