@@ -63,18 +63,18 @@
       </section>
 
       <section class="stats-grid" aria-label="预定统计">
-        <article class="stat-card"><span class="stat-label">进行中预定</span><strong class="stat-value" id="statActive">0</strong><span class="stat-hint">未到货、未取消</span></article>
+        <article class="stat-card"><span class="stat-label">未补款</span><strong class="stat-value" id="statActive">0</strong><span class="stat-hint">等待补款的预定</span></article>
         <article class="stat-card stat-amber"><span class="stat-label">剩余待付</span><strong class="stat-value" id="statDue">¥0</strong><span class="stat-hint">定金与已补款之外</span></article>
         <article class="stat-card stat-blue"><span class="stat-label">30天内发售</span><strong class="stat-value" id="statUpcoming">0</strong><span class="stat-hint">按发售月份计算</span></article>
-        <article class="stat-card stat-green"><span class="stat-label">已到货</span><strong class="stat-value" id="statArrived">0</strong><span class="stat-hint">可以安心拆盒了</span></article>
+        <article class="stat-card stat-green"><span class="stat-label">已补款</span><strong class="stat-value" id="statPaid">0</strong><span class="stat-hint">已经补清的预定</span></article>
       </section>
 
       <section class="toolbar" aria-label="筛选与排序">
         <div class="filter-tabs" role="tablist" aria-label="记录筛选">
           <button class="filter-tab active" type="button" data-filter="all" role="tab" aria-selected="true">全部</button>
-          <button class="filter-tab" type="button" data-filter="due" role="tab" aria-selected="false">待补款</button>
+          <button class="filter-tab" type="button" data-filter="due" role="tab" aria-selected="false">未补款</button>
           <button class="filter-tab" type="button" data-filter="upcoming" role="tab" aria-selected="false">即将发售</button>
-          <button class="filter-tab" type="button" data-filter="done" role="tab" aria-selected="false">已完成</button>
+          <button class="filter-tab" type="button" data-filter="done" role="tab" aria-selected="false">已补款</button>
         </div>
         <div class="toolbar-controls">
           <label class="search-box">
@@ -194,7 +194,7 @@
           <h3>发售与状态</h3>
           <div class="form-grid">
             <label class="field"><span>发售月份</span><input id="releaseMonth" name="releaseMonth" type="month"></label>
-            <label class="field"><span>状态</span><select id="status" name="status"><option value="待付定金">待付定金</option><option value="待补款" selected>待补款</option><option value="已补款待发货">已补款待发货</option><option value="已发货">已发货</option><option value="已到货">已到货</option><option value="已取消">已取消</option></select></label>
+            <label class="field"><span>状态</span><select id="status" name="status"><option value="未补款" selected>未补款</option><option value="已补款">已补款</option></select></label>
           </div>
         </section>
 
@@ -243,6 +243,8 @@
             <label class="field wide"><span>商品名称 <b>*</b></span><input id="wishlistName" maxlength="80" required placeholder="例如：METAL BUILD 命运高达"></label>
             <label class="field"><span>发售价格</span><div class="money-input"><span>¥</span><input id="wishlistReleasePrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="官方定价"></div></label>
             <label class="field"><span>优先程度</span><select id="wishlistPriority"><option value="普通">普通</option><option value="优先">优先</option><option value="必买">必买</option></select></label>
+            <label class="field"><span>当前价格（可选）</span><div class="money-input"><span>¥</span><input id="wishlistCurrentPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="填写后加入价格历史"></div></label>
+            <label class="field"><span>价格日期</span><input id="wishlistCurrentPriceDate" type="date"></label>
             <div class="field wide">
               <span>商品图片</span>
               <div class="image-editor">
@@ -318,7 +320,7 @@
         <div class="settings-summary">
           <div><span>当前条目</span><strong id="settingsCount">0</strong></div>
           <div><span>存储位置</span><strong>当前浏览器</strong></div>
-          <div><span>版本</span><strong>2.1</strong></div>
+          <div><span>版本</span><strong>2.2</strong></div>
         </div>
 
         <section class="settings-section">
@@ -360,6 +362,7 @@
   <script src="./app.js" defer></script>
 </body>
 </html>
+
 
 
 

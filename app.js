@@ -6,14 +6,10 @@ const CHANNEL_NAME = 'mowo-preorders-updates';
 const MEDIA_DB_NAME = 'mowo-preorder-media';
 const MEDIA_STORE_NAME = 'images';
 const MAX_IMAGE_DIMENSION = 800;
-const DONE_STATUSES = new Set(['已到货', '已取消']);
+const DONE_STATUSES = new Set(['已补款']);
 const STATUS_META = {
-  '待付定金': { className: 'pending' },
-  '待补款': { className: 'due' },
-  '已补款待发货': { className: 'paid' },
-  '已发货': { className: 'shipped' },
-  '已到货': { className: 'arrived' },
-  '已取消': { className: 'cancelled' },
+  '未补款': { className: 'due' },
+  '已补款': { className: 'paid' },
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -31,7 +27,7 @@ const elements = {
   statActive: $('#statActive'),
   statDue: $('#statDue'),
   statUpcoming: $('#statUpcoming'),
-  statArrived: $('#statArrived'),
+  statPaid: $('#statPaid'),
   heroTitle: $('#heroTitle'),
   heroSub: $('#heroSub'),
   greeting: $('#greeting'),
@@ -158,7 +154,7 @@ function normalizeRecord(raw = {}) {
     releaseDate: validDate(raw.releaseDate),
     releaseMonth: validMonth(raw.releaseMonth || raw.releaseDate),
     paymentDeadline: validDate(raw.paymentDeadline),
-    status: STATUS_META[raw.status] ? raw.status : '待补款',
+    status: raw.status === '已补款' || ['已补款待发货', '已发货', '已到货', '已取消'].includes(raw.status) ? '已补款' : '未补款',
     total: numberValue(raw.total),
     deposit: numberValue(raw.deposit),
     paidBalance: numberValue(raw.paidBalance ?? raw.paid),
@@ -373,9 +369,9 @@ function calculate(record) {
   const paidTotal = round2(deposit + paidBalance);
   const progress = total > 0 ? Math.min(100, Math.round((paidTotal / total) * 100)) : 0;
   const releaseDays = daysUntilMonth(record.releaseMonth || record.releaseDate);
-  const done = DONE_STATUSES.has(record.status);
+  const done = record.status === '已补款';
   const urgent = false;
-  const upcoming = !done && releaseDays !== null && releaseDays >= 0 && releaseDays <= 30;
+  const upcoming = releaseDays !== null && releaseDays >= 0 && releaseDays <= 30;
   return { total, deposit, paidBalance, due, remaining, paidTotal, progress, releaseDays, done, urgent, upcoming };
 }
 
@@ -520,7 +516,7 @@ function getFilteredRecords() {
 
 function getNextEvent() {
   const candidates = records
-    .filter((record) => !DONE_STATUSES.has(record.status) && record.releaseMonth)
+    .filter((record) => record.releaseMonth)
     .map((record) => ({ record, date: record.releaseMonth, days: calculate(record).releaseDays }));
   candidates.sort((a, b) => a.date.localeCompare(b.date));
   return candidates[0] || null;
@@ -536,15 +532,15 @@ function render() {
 }
 
 function renderSummary() {
-  const active = records.filter((record) => !DONE_STATUSES.has(record.status));
+  const active = records.filter((record) => record.status === '未补款');
   const due = active.reduce((sum, record) => sum + calculate(record).remaining, 0);
   const upcoming = records.filter((record) => calculate(record).upcoming).length;
-  const arrived = records.filter((record) => record.status === '已到货').length;
+  const paid = records.filter((record) => record.status === '已补款').length;
 
   elements.statActive.textContent = String(active.length);
   elements.statDue.textContent = formatMoney(due);
   elements.statUpcoming.textContent = String(upcoming);
-  elements.statArrived.textContent = String(arrived);
+  elements.statPaid.textContent = String(paid);
 
   const hour = new Date().getHours();
   elements.greeting.textContent = hour < 11 ? '早上好，今天要留意什么？' : hour < 18 ? '今天要留意什么？' : '晚上好，看看接下来的预定。';
@@ -553,7 +549,7 @@ function renderSummary() {
     elements.heroTitle.textContent = '把预定期待办，收进一个地方。';
     elements.heroSub.textContent = '记录全款、定金和补款；用发售月份查看接下来的预定。';
   } else {
-    elements.heroTitle.textContent = `还有 ${active.length} 件预定在进行中。`;
+    elements.heroTitle.textContent = `还有 ${active.length} 件预定未补款。`;
     if (upcoming > 0) {
       elements.heroSub.textContent = `有 ${upcoming} 件将在 30 天内进入发售月份。`;
     } else {
@@ -597,7 +593,7 @@ function recordCardHTML(record) {
   const calc = calculate(record);
   const status = statusClass(record.status);
   const alert = calc.upcoming ? `发售 ${monthRelativeLabel(calc.releaseDays)}` : '';
-  const canPay = calc.remaining > 0 && !calc.done;
+  const canPay = record.status === '未补款' && calc.remaining > 0;
   const note = record.note ? `<p class="card-note">${escapeHTML(record.note)}</p>` : '';
   const imageUrl = record.imageId ? imageCache.get(record.imageId) : '';
   const meta = record.platform || '还没有填写平台或店铺';
@@ -661,7 +657,7 @@ function emptyStateHTML() {
 
 function renderRecords() {
   const list = getFilteredRecords();
-  const titleMap = { all: '全部记录', due: '待补款', upcoming: '即将发售', done: '已完成' };
+  const titleMap = { all: '全部记录', due: '未补款', upcoming: '即将发售', done: '已补款' };
   elements.listTitle.textContent = titleMap[currentFilter] || '全部记录';
   elements.listCount.textContent = `${list.length} 条`;
   elements.recordsGrid.innerHTML = list.length ? list.map(recordCardHTML).join('') : emptyStateHTML();
@@ -852,7 +848,7 @@ function openRecordDialog(record = null) {
   $('#name').value = record?.name || '';
   $('#platform').value = record?.platform || '';
   $('#releaseMonth').value = record?.releaseMonth || '';
-  $('#status').value = record?.status || '待补款';
+  $('#status').value = record?.status || '未补款';
   $('#total').value = record?.total ? String(record.total) : '';
   $('#deposit').value = record?.deposit ? String(record.deposit) : '';
   $('#paidBalance').value = record?.paidBalance ? String(record.paidBalance) : '';
@@ -1036,6 +1032,8 @@ function openWishlistDialog(item = null) {
   $('#wishlistName').value = item?.name || '';
   $('#wishlistReleasePrice').value = item?.releasePrice ? String(item.releasePrice) : '';
   $('#wishlistPriority').value = item?.priority || '普通';
+  $('#wishlistCurrentPrice').value = '';
+  $('#wishlistCurrentPriceDate').value = todayISO();
   $('#wishlistNote').value = item?.note || '';
   elements.wishlistFormError.textContent = '';
   renderWishlistImagePreview();
@@ -1097,13 +1095,24 @@ elements.wishlistForm.addEventListener('submit', async (event) => {
     elements.wishlistFormError.textContent = '图片保存失败，请检查浏览器存储空间。';
     return;
   }
+  const currentPrice = numberValue($('#wishlistCurrentPrice').value);
+  const priceHistory = existing?.priceHistory ? [...existing.priceHistory] : [];
+  if (currentPrice > 0) {
+    priceHistory.push({
+      id: `price-${makeId()}`,
+      price: currentPrice,
+      date: $('#wishlistCurrentPriceDate').value || todayISO(),
+      note: '',
+      createdAt: now,
+    });
+  }
   const item = normalizeWishlist({
     id: existing?.id || makeId(),
     name,
     imageId,
     priority: $('#wishlistPriority').value,
     releasePrice: numberValue($('#wishlistReleasePrice').value),
-    priceHistory: existing?.priceHistory || [],
+    priceHistory,
     note: $('#wishlistNote').value,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
@@ -1116,7 +1125,9 @@ elements.wishlistForm.addEventListener('submit', async (event) => {
   if (!saveWishlist()) return;
   closeDialog(elements.wishlistDialog);
   render();
-  showToast(existing ? '愿望已更新' : '愿望已添加');
+  showToast(currentPrice > 0
+    ? `${existing ? '愿望已更新' : '愿望已添加'}，并记录价格 ${formatMoney(currentPrice)}`
+    : (existing ? '愿望已更新' : '愿望已添加'));
 });
 
 elements.deleteWishlistButton.addEventListener('click', async () => {
@@ -1266,7 +1277,7 @@ function recordFullPayment(id) {
   const updated = {
     ...record,
     paidBalance: round2(calc.paidBalance + amount),
-    status: ['待付定金', '待补款'].includes(record.status) ? '已补款待发货' : record.status,
+    status: '已补款',
     updatedAt: new Date().toISOString(),
   };
   records = records.map((item) => item.id === record.id ? updated : item);
