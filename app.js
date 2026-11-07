@@ -30,6 +30,9 @@ const elements = {
   paidGrid: $('#paidGrid'),
   unpaidCount: $('#unpaidCount'),
   paidCount: $('#paidCount'),
+  unpaidLane: $('#unpaidLane'),
+  paidLane: $('#paidLane'),
+  laneSwitchButtons: $$('[data-lane-filter]'),
   wishlistGrid: $('#wishlistGrid'),
   statActive: $('#statActive'),
   statDue: $('#statDue'),
@@ -99,6 +102,7 @@ let wishlist = loadWishlist();
 let currentView = 'preorder';
 let currentSort = 'smart';
 let currentQuery = '';
+let preorderLaneFilter = 'all';
 let wishlistFilter = 'all';
 let wishlistSort = 'smart';
 let wishlistQuery = '';
@@ -633,6 +637,17 @@ function recordCardHTML(record) {
     </article>`;
 }
 
+function applyPreorderLaneFilter() {
+  elements.unpaidLane.hidden = preorderLaneFilter === 'paid';
+  elements.paidLane.hidden = preorderLaneFilter === 'unpaid';
+  elements.preorderColumns.classList.toggle('single-lane', preorderLaneFilter !== 'all');
+  elements.laneSwitchButtons.forEach((button) => {
+    const active = button.dataset.laneFilter === preorderLaneFilter;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+}
+
 function laneEmptyHTML(lane) {
   const searching = Boolean(currentQuery.trim());
   const title = lane === 'unpaid' ? '未补款' : '已补款';
@@ -798,6 +813,13 @@ elements.preorderColumns.addEventListener('click', (event) => {
     const record = records.find((item) => item.id === id);
     if (record) openRecordDialog(record);
   }
+});
+
+elements.laneSwitchButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    preorderLaneFilter = button.dataset.laneFilter;
+    applyPreorderLaneFilter();
+  });
 });
 
 elements.nextAction.addEventListener('click', () => {
@@ -1527,6 +1549,7 @@ function maybeOfferAutoBackup() {
 async function initApp() {
   await hydrateImageCache();
   render();
+  applyPreorderLaneFilter();
   updateBackToTop();
   maybeOfferAutoBackup();
 }

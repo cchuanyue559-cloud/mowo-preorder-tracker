@@ -12,7 +12,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=2.4.0">
+  <link rel="stylesheet" href="./styles.css?v=2.5.0">
   <title>模玩预定簿</title>
 </head>
 <body>
@@ -70,7 +70,14 @@
       </section>
 
       <section class="toolbar preorder-toolbar" aria-label="搜索与排序">
-        <div class="lane-toolbar-label"><span class="lane-dot unpaid"></span>按补款状态自动分栏</div>
+        <div class="lane-toolbar-left">
+          <div class="lane-toolbar-label"><span class="lane-dot unpaid"></span>按补款状态分栏</div>
+          <div class="lane-switch" role="tablist" aria-label="快速切换补款状态">
+            <button class="lane-switch-btn active" type="button" data-lane-filter="all" role="tab" aria-selected="true">全部</button>
+            <button class="lane-switch-btn" type="button" data-lane-filter="unpaid" role="tab" aria-selected="false">未补款</button>
+            <button class="lane-switch-btn" type="button" data-lane-filter="paid" role="tab" aria-selected="false">已补款</button>
+          </div>
+        </div>
         <div class="toolbar-controls">
           <label class="search-box">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.2 4.2"/></svg>
@@ -89,14 +96,14 @@
       </section>
 
       <section class="preorder-columns" id="preorderColumns" aria-label="预定记录分栏">
-        <section class="preorder-lane lane-unpaid">
+        <section class="preorder-lane lane-unpaid" id="unpaidLane">
           <header class="lane-header">
             <div><span class="lane-kicker">等待处理</span><h2>未补款</h2></div>
             <span class="lane-count" id="unpaidCount">0</span>
           </header>
           <div class="lane-list" id="unpaidGrid" aria-live="polite"></div>
         </section>
-        <section class="preorder-lane lane-paid">
+        <section class="preorder-lane lane-paid" id="paidLane">
           <header class="lane-header">
             <div><span class="lane-kicker">已经补清</span><h2>已补款</h2></div>
             <span class="lane-count" id="paidCount">0</span>
@@ -326,7 +333,7 @@
         <div class="settings-summary">
           <div><span>当前条目</span><strong id="settingsCount">0</strong></div>
           <div><span>存储位置</span><strong>当前浏览器</strong></div>
-          <div><span>版本</span><strong>2.4</strong></div>
+          <div><span>版本</span><strong>2.5</strong></div>
         </div>
 
         <section class="settings-section">
@@ -366,7 +373,7 @@
 
   <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
   <noscript><div class="noscript">这个工具需要启用 JavaScript 才能使用。</div></noscript>
-  <script src="./app.js?v=2.4.0" defer></script>
+  <script src="./app.js?v=2.5.0" defer></script>
 </body>
 </html>
 
