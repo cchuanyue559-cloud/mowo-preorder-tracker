@@ -2,6 +2,9 @@
 
 const STORAGE_KEY = 'mowo-preorders-v1';
 const WISHLIST_KEY = 'mowo-wishlist-v1';
+const RECORD_BACKUP_KEY = 'mowo-preorders-v1-backup';
+const WISHLIST_BACKUP_KEY = 'mowo-wishlist-v1-backup';
+const BACKUP_META_KEY = 'mowo-auto-backup-meta-v1';
 const CHANNEL_NAME = 'mowo-preorders-updates';
 const MEDIA_DB_NAME = 'mowo-preorder-media';
 const MEDIA_STORE_NAME = 'images';
@@ -86,6 +89,7 @@ const elements = {
   settingsDialog: $('#settingsDialog'),
   settingsCount: $('#settingsCount'),
   importFile: $('#importFile'),
+  restoreBackupButton: $('#restoreBackupButton'),
   installButton: $('#installButton'),
   toastRegion: $('#toastRegion'),
 };
@@ -216,6 +220,9 @@ function loadWishlist() {
 
 function saveWishlist() {
   try {
+    const previous = localStorage.getItem(WISHLIST_KEY);
+    if (previous && previous !== '[]') localStorage.setItem(WISHLIST_BACKUP_KEY, previous);
+    localStorage.setItem(BACKUP_META_KEY, JSON.stringify({ at: new Date().toISOString() }));
     localStorage.setItem(WISHLIST_KEY, JSON.stringify(wishlist));
     channel?.postMessage({ type: 'updated' });
     return true;
@@ -239,6 +246,9 @@ function loadRecords() {
 
 function saveRecords() {
   try {
+    const previous = localStorage.getItem(STORAGE_KEY);
+    if (previous && previous !== '[]') localStorage.setItem(RECORD_BACKUP_KEY, previous);
+    localStorage.setItem(BACKUP_META_KEY, JSON.stringify({ at: new Date().toISOString() }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
     channel?.postMessage({ type: 'updated' });
     return true;
@@ -320,13 +330,6 @@ async function clearCachedImages() {
 async function hydrateImageCache() {
   try {
     imageCache = new Map(await getAllCachedImages());
-    const usedIds = new Set([...records, ...wishlist].map((item) => item.imageId).filter(Boolean));
-    for (const id of Array.from(imageCache.keys())) {
-      if (!usedIds.has(id)) {
-        imageCache.delete(id);
-        await deleteCachedImage(id);
-      }
-    }
   } catch (error) {
     console.warn('图片缓存读取失败', error);
   }
@@ -1414,6 +1417,35 @@ elements.importFile.addEventListener('change', async () => {
   }
 });
 
+elements.restoreBackupButton.addEventListener('click', async () => {
+  const recordBackup = localStorage.getItem(RECORD_BACKUP_KEY);
+  const wishlistBackup = localStorage.getItem(WISHLIST_BACKUP_KEY);
+  if (!recordBackup && !wishlistBackup) {
+    showToast('没有可用的自动备份');
+    return;
+  }
+  if (!window.confirm('确定恢复上次自动备份吗？当前主数据会被备份内容替换。')) return;
+  try {
+    if (recordBackup) {
+      const restoredRecords = JSON.parse(recordBackup).map(normalizeRecord).filter((record) => record.name);
+      records = restoredRecords;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    }
+    if (wishlistBackup) {
+      const restoredWishlist = JSON.parse(wishlistBackup).map(normalizeWishlist).filter((item) => item.name);
+      wishlist = restoredWishlist;
+      localStorage.setItem(WISHLIST_KEY, JSON.stringify(wishlist));
+    }
+    await hydrateImageCache();
+    render();
+    closeDialog(elements.settingsDialog);
+    showToast(`已恢复 ${records.length} 条预定、${wishlist.length} 个愿望`);
+  } catch (error) {
+    console.error('恢复自动备份失败', error);
+    showToast('自动备份损坏，无法恢复');
+  }
+});
+
 $('#clearDataButton').addEventListener('click', async () => {
   if (!records.length && !wishlist.length) {
     showToast('当前没有记录');
@@ -1426,6 +1458,9 @@ $('#clearDataButton').addEventListener('click', async () => {
   wishlist = [];
   saveRecords();
   saveWishlist();
+  localStorage.removeItem(RECORD_BACKUP_KEY);
+  localStorage.removeItem(WISHLIST_BACKUP_KEY);
+  localStorage.removeItem(BACKUP_META_KEY);
   closeDialog(elements.settingsDialog);
   render();
   showToast('全部数据已清空');
@@ -1482,10 +1517,18 @@ function updateBackToTop() {
 window.addEventListener('scroll', updateBackToTop, { passive: true });
 elements.backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 
+function maybeOfferAutoBackup() {
+  const hasBackup = Boolean(localStorage.getItem(RECORD_BACKUP_KEY) || localStorage.getItem(WISHLIST_BACKUP_KEY));
+  if (!records.length && !wishlist.length && hasBackup) {
+    showToast('发现上次自动备份，可在设置中恢复', '打开设置', () => openSettings(), 6000);
+  }
+}
+
 async function initApp() {
   await hydrateImageCache();
   render();
   updateBackToTop();
+  maybeOfferAutoBackup();
 }
 
 initApp();
