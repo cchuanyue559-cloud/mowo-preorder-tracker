@@ -22,7 +22,11 @@ const elements = {
   wishlistView: $('#wishlistView'),
   preorderViewCount: $('#preorderViewCount'),
   wishlistViewCount: $('#wishlistViewCount'),
-  recordsGrid: $('#recordsGrid'),
+  preorderColumns: $('#preorderColumns'),
+  unpaidGrid: $('#unpaidGrid'),
+  paidGrid: $('#paidGrid'),
+  unpaidCount: $('#unpaidCount'),
+  paidCount: $('#paidCount'),
   wishlistGrid: $('#wishlistGrid'),
   statActive: $('#statActive'),
   statDue: $('#statDue'),
@@ -36,8 +40,6 @@ const elements = {
   nextName: $('#nextName'),
   nextDetail: $('#nextDetail'),
   nextAction: $('#nextAction'),
-  listTitle: $('#listTitle'),
-  listCount: $('#listCount'),
   searchInput: $('#searchInput'),
   sortSelect: $('#sortSelect'),
   recordDialog: $('#recordDialog'),
@@ -91,7 +93,6 @@ const elements = {
 let records = loadRecords();
 let wishlist = loadWishlist();
 let currentView = 'preorder';
-let currentFilter = 'all';
 let currentSort = 'smart';
 let currentQuery = '';
 let wishlistFilter = 'all';
@@ -488,10 +489,6 @@ function getFilteredRecords() {
       const haystack = [record.name, record.platform, record.note].join(' ').toLowerCase();
       if (!haystack.includes(query)) return false;
     }
-    const calc = calculate(record);
-    if (currentFilter === 'due') return !calc.done && calc.remaining > 0;
-    if (currentFilter === 'upcoming') return calc.upcoming;
-    if (currentFilter === 'done') return calc.done;
     return true;
   });
 
@@ -633,34 +630,30 @@ function recordCardHTML(record) {
     </article>`;
 }
 
-function emptyStateHTML() {
-  if (!records.length) {
-    return `
-      <div class="empty-state">
-        <div class="empty-icon"><svg viewBox="0 0 48 48"><path d="M11 14h26v23H11z"/><path d="M11 20h26M17 10v8M31 10v8"/><path d="M18 27h5v5h-5zM26 27h5v5h-5z"/></svg></div>
-        <h3>还没有预定记录</h3>
-        <p>从第一笔预定开始。只填商品、日期和金额，补款与剩余金额会自动算好。</p>
-        <div class="empty-actions">
-          <button class="btn btn-primary" type="button" data-action="add">添加第一笔预定</button>
-          <button class="btn btn-ghost" type="button" data-action="import">导入备份</button>
-        </div>
-      </div>`;
+function laneEmptyHTML(lane) {
+  const searching = Boolean(currentQuery.trim());
+  const title = lane === 'unpaid' ? '未补款' : '已补款';
+  if (searching) {
+    return `<div class="lane-empty"><strong>没有匹配的${title}记录</strong><p>换一个搜索词试试。</p><div class="empty-actions"><button class="btn btn-ghost btn-small" type="button" data-action="clear-search">清空搜索</button></div></div>`;
   }
-  return `
-    <div class="empty-state">
-      <div class="empty-icon"><svg viewBox="0 0 48 48"><circle cx="21" cy="21" r="11"/><path d="m29 29 8 8M16 21h10"/></svg></div>
-      <h3>没有找到符合条件的记录</h3>
-      <p>换个筛选条件，或清空搜索词再看看。</p>
-      <div class="empty-actions"><button class="btn btn-primary" type="button" data-action="clear-filters">查看全部记录</button></div>
-    </div>`;
+  if (!records.length) {
+    return lane === 'unpaid'
+      ? `<div class="lane-empty"><strong>还没有预定记录</strong><p>添加第一笔预定，未补款的卡片会出现在这里。</p><div class="empty-actions"><button class="btn btn-primary btn-small" type="button" data-action="add">添加预定</button><button class="btn btn-ghost btn-small" type="button" data-action="import">导入备份</button></div></div>`
+      : `<div class="lane-empty"><strong>已补款记录会出现在这里</strong><p>一键补款后，卡片会自动从左侧移动到右侧。</p></div>`;
+  }
+  return lane === 'unpaid'
+    ? `<div class="lane-empty"><strong>没有未补款的预定</strong><p>当前所有预定都已经补清。</p><div class="empty-actions"><button class="btn btn-primary btn-small" type="button" data-action="add">添加预定</button></div></div>`
+    : `<div class="lane-empty"><strong>还没有已补款记录</strong><p>完成补款后，记录会自动移动到这里。</p></div>`;
 }
 
 function renderRecords() {
   const list = getFilteredRecords();
-  const titleMap = { all: '全部记录', due: '未补款', upcoming: '即将发售', done: '已补款' };
-  elements.listTitle.textContent = titleMap[currentFilter] || '全部记录';
-  elements.listCount.textContent = `${list.length} 条`;
-  elements.recordsGrid.innerHTML = list.length ? list.map(recordCardHTML).join('') : emptyStateHTML();
+  const unpaid = list.filter((record) => record.status === '未补款');
+  const paid = list.filter((record) => record.status === '已补款');
+  elements.unpaidCount.textContent = String(unpaid.length);
+  elements.paidCount.textContent = String(paid.length);
+  elements.unpaidGrid.innerHTML = unpaid.length ? unpaid.map(recordCardHTML).join('') : laneEmptyHTML('unpaid');
+  elements.paidGrid.innerHTML = paid.length ? paid.map(recordCardHTML).join('') : laneEmptyHTML('paid');
 }
 
 function wishlistPriorityClass(priority) {
@@ -784,22 +777,16 @@ elements.wishlistGrid.addEventListener('click', (event) => {
   if (action === 'wishlist-price') return openPriceDialog(id);
 });
 
-elements.recordsGrid.addEventListener('click', (event) => {
+elements.preorderColumns.addEventListener('click', (event) => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const action = button.dataset.action;
   if (action === 'add') return openRecordDialog();
   if (action === 'import') return elements.importFile.click();
-  if (action === 'clear-filters') {
-    currentFilter = 'all';
+  if (action === 'clear-search') {
     currentQuery = '';
     elements.searchInput.value = '';
-    $$('.filter-tab').forEach((tab) => {
-      const active = tab.dataset.filter === 'all';
-      tab.classList.toggle('active', active);
-      tab.setAttribute('aria-selected', String(active));
-    });
-    return render();
+    return renderRecords();
   }
   const id = button.dataset.id;
   if (!id) return;
@@ -818,7 +805,7 @@ elements.nextAction.addEventListener('click', () => {
     const record = records.find((item) => item.id === id);
     if (record) return openRecordDialog(record);
   }
-  elements.recordsGrid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  elements.preorderColumns.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 function showDialog(dialog) {
@@ -1311,18 +1298,6 @@ $$('[data-close-dialog]').forEach((button) => {
     if (event.target === dialog) closeDialog(dialog);
   });
   dialog.addEventListener('close', updateModalBodyState);
-});
-
-$$('.filter-tab').forEach((tab) => {
-  tab.addEventListener('click', () => {
-    currentFilter = tab.dataset.filter;
-    $$('.filter-tab').forEach((item) => {
-      const active = item === tab;
-      item.classList.toggle('active', active);
-      item.setAttribute('aria-selected', String(active));
-    });
-    renderRecords();
-  });
 });
 
 elements.searchInput.addEventListener('input', () => {

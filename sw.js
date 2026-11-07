@@ -1,5 +1,5 @@
 "use strict";
-const CACHE_NAME = "mowo-preorder-v6";
+const CACHE_NAME = "mowo-preorder-v7";
 const APP_SHELL = [
   "./",
   "./index.html",
