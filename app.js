@@ -597,7 +597,7 @@ function recordCardHTML(record) {
   const calc = calculate(record);
   const status = statusClass(record.status);
   const alert = calc.upcoming ? `发售 ${monthRelativeLabel(calc.releaseDays)}` : '';
-  const canPay = record.status === '未补款' && calc.remaining > 0;
+  const canPay = record.status === '未补款';
   const note = record.note ? `<p class="card-note">${escapeHTML(record.note)}</p>` : '';
   const imageUrl = record.imageId ? imageCache.get(record.imageId) : '';
   const meta = record.platform || '还没有填写平台或店铺';
@@ -631,7 +631,7 @@ function recordCardHTML(record) {
       </div>
       ${note}
       <div class="card-actions">
-        ${canPay ? `<button class="btn btn-primary" type="button" data-action="pay" data-id="${escapeHTML(record.id)}">一键补款</button>` : ''}
+        ${canPay ? `<button class="btn btn-primary" type="button" data-action="pay" data-id="${escapeHTML(record.id)}">已补款</button>` : ''}
         <button class="btn btn-ghost btn-edit" type="button" data-action="edit" data-id="${escapeHTML(record.id)}">编辑</button>
       </div>
     </article>`;
@@ -1278,24 +1278,20 @@ elements.wishlistSortSelect.addEventListener('change', () => {
 
 function recordFullPayment(id) {
   const record = records.find((item) => item.id === id);
-  if (!record) return;
+  if (!record || record.status === '已补款') return;
   const calc = calculate(record);
-  if (calc.remaining <= 0) {
-    showToast('这笔预定已经没有待付款');
-    return;
-  }
   const previous = { ...record };
   const amount = calc.remaining;
   const updated = {
     ...record,
-    paidBalance: round2(calc.paidBalance + amount),
+    paidBalance: amount > 0 ? round2(calc.paidBalance + amount) : calc.paidBalance,
     status: '已补款',
     updatedAt: new Date().toISOString(),
   };
   records = records.map((item) => item.id === record.id ? updated : item);
   if (!saveRecords()) return;
   render();
-  showToast(`已一键补款 ${formatMoney(amount)}`, '撤销', () => {
+  showToast(amount > 0 ? `已补款 ${formatMoney(amount)}` : '已标记为已补款', '撤销', () => {
     records = records.map((item) => item.id === previous.id ? previous : item);
     saveRecords();
     render();

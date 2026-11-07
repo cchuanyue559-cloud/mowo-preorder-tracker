@@ -1,10 +1,10 @@
 "use strict";
-const CACHE_NAME = "mowo-preorder-v9";
+const CACHE_NAME = "mowo-preorder-v10";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=2.5.0",
-  "./app.js?v=2.5.0",
+  "./styles.css?v=2.6.0",
+  "./app.js?v=2.6.0",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",
